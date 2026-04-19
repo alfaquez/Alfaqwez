@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "User": {
+      "title": "Employee",
+      "description": "User profile with score and badges",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "password": { "type": "string" },
+        "totalScore": { "type": "number" },
+        "lastExamScore": { "type": "number" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["name", "employeeId", "password"]
+    },
+    "Exam": {
+      "title": "Monthly Exam",
+      "description": "Exam configuration for a specific month",
+      "type": "object",
+      "properties": {
+        "month": { "type": "integer" },
+        "year": { "type": "integer" },
+        "status": { "type": "string", "enum": ["locked", "active"] },
+        "timerSeconds": { "type": "integer" }
+      },
+      "required": ["month", "year", "status"]
+    },
+    "Question": {
+      "title": "Exam Question",
+      "description": "Individual exam question",
+      "type": "object",
+      "properties": {
+        "examId": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["tf", "mc"] },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correctAnswer": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["examId", "text", "type", "correctAnswer"]
+    },
+    "Result": {
+      "title": "Exam Result",
+      "description": "Submission results for an employee",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "examId": { "type": "string" },
+        "score": { "type": "number" },
+        "answers": { "type": "array", "items": { "type": "object" } },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "aiInsights": { "type": "string" }
+      },
+      "required": ["userId", "examId", "score"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Collection of employee profiles"
+    },
+    "exams/{examId}": {
+      "schema": "Exam",
+      "description": "Collection of monthly exams"
+    },
+    "exams/{examId}/questions/{questionId}": {
+      "schema": "Question",
+      "description": "Questions for a specific exam"
+    },
+    "results/{resultId}": {
+      "schema": "Result",
+      "description": "Employee exam submissions"
+    }
+  }
+}

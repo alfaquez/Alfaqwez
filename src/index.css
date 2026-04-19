@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,900;1,400;1,900&family=Orbitron:wght@400;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-alfa-blue: #002855;
+  --color-alfa-neon-blue: #0070f3;
+  --color-alfa-red: #d91b42;
+  --color-alfa-neon-red: #ff1a1a;
+  --color-alfa-bg: #f8fafc;
+  --color-alfa-text: #0f172a;
+  --color-alfa-text-secondary: #64748b;
+  
+  --font-alfa: "Inter", sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-serif: "Playfair Display", serif;
+  --font-logo: "Orbitron", sans-serif;
+}
+
+@layer utilities {
+  .alfa-glass {
+    @apply backdrop-blur-3xl border border-white max-md:border-white/60 shadow-2xl;
+    background: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 25px 80px -12px rgba(0, 40, 85, 0.08), inset 0 0 20px rgba(255, 255, 255, 0.5);
+  }
+
+  .alfa-neon-blue {
+    box-shadow: 0 20px 40px rgba(0, 112, 243, 0.25), 0 0 20px rgba(0, 112, 243, 0.1);
+  }
+
+  .alfa-neon-red {
+    box-shadow: 0 20px 40px rgba(217, 27, 66, 0.25), 0 0 20px rgba(217, 27, 66, 0.1);
+  }
+
+  .alfa-text-neon {
+    text-shadow: 0 0 15px rgba(0, 112, 243, 0.5), 0 0 30px rgba(0, 112, 243, 0.2);
+  }
+
+  .alfa-ambient-blue {
+    background: radial-gradient(circle at center, rgba(0, 112, 243, 0.18) 0%, transparent 75%);
+  }
+
+  .alfa-neon-glass-input {
+    @apply backdrop-blur-3xl border border-alfa-neon-blue/10 transition-all duration-700 bg-white/40;
+    box-shadow: 0 10px 40px rgba(0, 112, 243, 0.05), inset 0 0 15px rgba(255, 255, 255, 0.2);
+  }
+
+  .alfa-neon-glass-input:focus-within {
+    @apply border-alfa-neon-blue/40 bg-white/50;
+    box-shadow: 0 0 50px rgba(0, 112, 243, 0.15), inset 0 0 20px rgba(255, 255, 255, 0.4);
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-alfa-bg text-alfa-text font-alfa antialiased min-h-screen overflow-x-hidden;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(0, 112, 243, 0.1) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(30, 64, 175, 0.08) 0px, transparent 50%),
+      linear-gradient(180deg, #f0f4f8 0%, #f8fafc 100%);
+  }
+}
+
+.alfa-panel {
+  @apply backdrop-blur-3xl border border-white rounded-[3.5rem] p-8 shadow-2xl;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 30px 60px -12px rgba(0, 40, 85, 0.12);
+}
+
+.metric-value {
+  @apply text-3xl font-black tracking-tight text-alfa-blue font-display;
+}
+
+.metric-label {
+  @apply text-[10px] uppercase text-alfa-text-secondary tracking-[0.25em] font-black opacity-30;
+}
+
+.alfa-nav-neon {
+  box-shadow: 0 -10px 40px rgba(0, 112, 243, 0.15), 0 0 10px rgba(0, 112, 243, 0.1);
+  border-top: 1px solid rgba(0, 112, 243, 0.1);
+}
+
+.alfa-neon-border {
+  @apply relative rounded-[3rem];
+}
+
+.alfa-neon-border::after {
+  content: '';
+  @apply absolute inset-0 rounded-[inherit] pointer-events-none;
+  box-shadow: inset 0 0 15px rgba(0, 112, 243, 0.05), 0 0 10px rgba(0, 112, 243, 0.03);
+  border: 1px solid rgba(0, 112, 243, 0.08);
+}
+
+.neon-glow-blue {
+  filter: drop-shadow(0 0 8px rgba(0, 112, 243, 0.4));
+}
+
+.alfa-app-border {
+  @apply rounded-[3rem] m-2 sm:m-4 overflow-hidden border-2 border-alfa-neon-blue shadow-[0_0_40px_rgba(0,112,243,0.1)];
+}
+
+.font-bold-distinct {
+  @apply font-black tracking-tight;
+}
+
