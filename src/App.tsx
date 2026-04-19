@@ -311,6 +311,7 @@ export default function App() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
+    const name = formData.get('name') as string;
     const employeeId = formData.get('employeeId') as string;
     const password = formData.get('password') as string;
     const regionId = formData.get('region') as string;
@@ -323,13 +324,38 @@ export default function App() {
     }
 
     const region = MOCK_REGIONS.find(r => r.id === regionId);
-    const foundUser = users.find(u => u.employeeId === employeeId);
     
-    if (foundUser && region && password === region.password) {
-      setUser(foundUser);
+    if (region && password === region.password) {
+      if (!name || !employeeId) {
+        alert(lang === 'ar' ? 'برجاء ادخال الاسم والكود' : 'Please enter Name and Code');
+        return;
+      }
+
+      let foundUser = users.find(u => u.employeeId === employeeId);
+      
+      if (!foundUser) {
+        // Create a new user dynamically if they don't exist
+        const newUser: UserData = {
+          id: 'u' + Date.now(),
+          name: name,
+          employeeId: employeeId,
+          region: regionId,
+          totalScore: 0,
+          lastScore: 0,
+          badges: [],
+          role: 'user',
+          examResults: []
+        };
+        setUsers(prev => [...prev, newUser]);
+        setUser(newUser);
+      } else {
+        // Update name if it changed? Or just log in as the existing user
+        setUser(foundUser);
+      }
+      
       setScreen('dashboard');
     } else {
-      alert(lang === 'ar' ? 'فشل تسجيل الدخول: بيانات المنطقه او الباسورد غير صحيحه' : 'Login Failed: Invalid Region password or ID');
+      alert(lang === 'ar' ? 'فشل تسجيل الدخول: بيانات المنطقه او الباسورد غير صحيحه' : 'Login Failed: Invalid Region password or Region selection');
     }
   };
 
