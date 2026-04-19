@@ -131,10 +131,29 @@ const translations = {
 };
 
 const MOCK_REGIONS = [
-  { id: 'r1', name: { ar: 'القاهرة', en: 'Cairo' }, password: '111' },
-  { id: 'r2', name: { ar: 'الإسكندرية', en: 'Alexandria' }, password: '222' },
-  { id: 'r3', name: { ar: 'طنطا', en: 'Tanta' }, password: '333' },
-  { id: 'r4', name: { ar: 'المنصورة', en: 'Mansoura' }, password: '444' },
+  { id: 'r1', name: { ar: 'المدن الجديده', en: 'New Cities' }, password: '1101' },
+  { id: 'r2', name: { ar: 'مصر الجديده', en: 'Heliopolis' }, password: '1102' },
+  { id: 'r3', name: { ar: 'المهندسين', en: 'Mohandessin' }, password: '1103' },
+  { id: 'r4', name: { ar: 'القاهره الجديده', en: 'New Cairo' }, password: '1104' },
+  { id: 'r5', name: { ar: 'فيصل & الهرم', en: 'Faisal & Haram' }, password: '1105' },
+  { id: 'r6', name: { ar: 'مدينه الشيخ زايد', en: 'Sheikh Zayed City' }, password: '1106' },
+  { id: 'r7', name: { ar: 'مدينة نصر', en: 'Nasr City' }, password: '1107' },
+  { id: 'r8', name: { ar: 'شرق القاهره 1', en: 'East Cairo 1' }, password: '1108' },
+  { id: 'r9', name: { ar: 'زهراء المعادي', en: 'Zahraa El Maadi' }, password: '1109' },
+  { id: 'r10', name: { ar: 'منطقه الدلتا 1', en: 'Delta Region 1' }, password: '1110' },
+  { id: 'r11', name: { ar: 'وسط البلد', en: 'Downtown' }, password: '1111' },
+  { id: 'r12', name: { ar: 'شرق القاهره 2', en: 'East Cairo 2' }, password: '1112' },
+  { id: 'r13', name: { ar: 'منطقه الدلتا 2', en: 'Delta Region 2' }, password: '1113' },
+  { id: 'r14', name: { ar: 'منطقه المعادي', en: 'Maadi Region' }, password: '1114' },
+  { id: 'r15', name: { ar: 'منطقه جنوب الصعيد', en: 'South Upper Egypt' }, password: '1115' },
+  { id: 'r16', name: { ar: 'منطقه شمال الجيزه', en: 'North Giza' }, password: '1116' },
+  { id: 'r17', name: { ar: 'منطقه حدائق اكتوبر', en: 'October Gardens' }, password: '1117' },
+  { id: 'r18', name: { ar: 'منطقه شبرا', en: 'Shoubra Region' }, password: '1118' },
+  { id: 'r19', name: { ar: 'منطقه شمال الصعيد', en: 'North Upper Egypt' }, password: '1119' },
+  { id: 'r20', name: { ar: 'مدينه السادس من اكتوبر', en: '6th of October City' }, password: '1120' },
+  { id: 'r21', name: { ar: 'الاسكندريه & البحيره', en: 'Alexandria & Beheira' }, password: '1121' },
+  { id: 'r22', name: { ar: 'منطقه وسط الصعيد', en: 'Central Upper Egypt' }, password: '1122' },
+  { id: 'r23', name: { ar: 'مدن القناه', en: 'Canal Cities' }, password: '1123' },
 ];
 
 // --- Mock Data ---
