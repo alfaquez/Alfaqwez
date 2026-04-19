@@ -41,6 +41,7 @@ interface UserData {
   badges: string[];
   role: 'user' | 'admin';
   examResults: ExamResult[];
+  allowedRetakes?: string[]; // IDs of exams the user is allowed to retake
 }
 
 interface ExamMonth {
@@ -51,6 +52,8 @@ interface ExamMonth {
   duration: number; // in seconds
   questions: string[]; // array of question IDs
   points: number;
+  type?: 'monthly' | 'training';
+  groupName?: string;
 }
 
 interface Question {
@@ -96,6 +99,12 @@ const translations = {
     progress: "التقدم",
     timeRemaining: "الوقت المتبقي",
     score: "الدرجة",
+    training: "التدريب",
+    monthlyExams: "اختبارات التقييم الشهري",
+    timesUp: "انتهى الوقت!",
+    retakeNotAllowed: "لقد أتممت هذا الاختبار بالفعل وغير مسموح بالإعادة",
+    allowRetake: "سماح بالإعادة",
+    groupName: "اسم المجموعة",
   },
   en: {
     appName: "ALFA QUEZ",
@@ -128,6 +137,12 @@ const translations = {
     progress: "Progress",
     timeRemaining: "Time Remaining",
     score: "Score",
+    training: "Training",
+    monthlyExams: "Monthly Assessment Exams",
+    timesUp: "Time's Up!",
+    retakeNotAllowed: "You have already completed this exam and retakes are not allowed",
+    allowRetake: "Allow Retake",
+    groupName: "Group Name",
   }
 };
 
@@ -155,6 +170,7 @@ const MOCK_REGIONS = [
   { id: 'r21', name: { ar: 'الاسكندريه & البحيره', en: 'Alexandria & Beheira' }, password: '1121' },
   { id: 'r22', name: { ar: 'منطقه وسط الصعيد', en: 'Central Upper Egypt' }, password: '1122' },
   { id: 'r23', name: { ar: 'مدن القناه', en: 'Canal Cities' }, password: '1123' },
+  { id: 'training', name: { ar: 'منطقة التدريب', en: 'Training Area' }, password: '777' },
 ];
 
 // --- Mock Data ---
@@ -289,9 +305,10 @@ export default function App() {
   ]);
   
   const [exams, setExams] = useState<ExamMonth[]>([
-    { id: '1', name: { ar: 'يناير', en: 'January' }, status: 'active', score: 85, duration: 300, questions: ['q1', 'q2'], points: 100 },
-    { id: '2', name: { ar: 'فبراير', en: 'February' }, status: 'active', score: 92, duration: 300, questions: ['q1', 'q3'], points: 100 },
-    { id: '3', name: { ar: 'مارس', en: 'March' }, status: 'active', duration: 600, questions: ['q2', 'q3'], points: 100 },
+    { id: '1', name: { ar: 'يناير', en: 'January' }, status: 'active', score: 85, duration: 300, questions: ['q1', 'q2'], points: 100, type: 'monthly' },
+    { id: '2', name: { ar: 'فبراير', en: 'February' }, status: 'active', score: 92, duration: 300, questions: ['q1', 'q3'], points: 100, type: 'monthly' },
+    { id: '3', name: { ar: 'مارس', en: 'March' }, status: 'active', duration: 600, questions: ['q2', 'q3'], points: 100, type: 'monthly' },
+    { id: 'T1', name: { ar: 'تدريب المهارات الأساسية', en: 'Basic Skills Training' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'training', groupName: 'Group' },
   ]);
   
   const [questions, setQuestions] = useState<Question[]>(MOCK_QUESTIONS);
@@ -301,6 +318,8 @@ export default function App() {
   const [examStep, setExamStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [timer, setTimer] = useState(300);
+  const [isTimeUp, setIsTimeUp] = useState(false);
+  const [categoryTab, setCategoryTab] = useState<'monthly' | 'training'>('monthly');
   
   // Admin Editing State
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
@@ -361,11 +380,35 @@ export default function App() {
   };
 
   const handleStartExam = (exam: ExamMonth) => {
+    // Check if user already finished this exam
+    const hasFinished = user?.examResults.some(r => r.examId === exam.id);
+    const isAllowedRetake = user?.allowedRetakes?.includes(exam.id);
+
+    if (hasFinished && !isAllowedRetake && user?.role !== 'admin') {
+        alert(text.retakeNotAllowed);
+        return;
+    }
+
     setActiveExam(exam);
     setExamStep(0);
     setAnswers({});
     setTimer(exam.duration);
+    setIsTimeUp(false);
     setScreen('exam');
+  };
+
+  const toggleRetake = (userId: string, examId: string) => {
+    setUsers(users.map(u => {
+        if (u.id === userId) {
+            const retakes = u.allowedRetakes || [];
+            if (retakes.includes(examId)) {
+                return { ...u, allowedRetakes: retakes.filter(id => id !== examId) };
+            } else {
+                return { ...u, allowedRetakes: [...retakes, examId] };
+            }
+        }
+        return u;
+    }));
   };
 
   const calculateScore = () => {
@@ -433,13 +476,13 @@ export default function App() {
 
   useEffect(() => {
     let interval: any;
-    if (screen === 'exam' && timer > 0) {
+    if (screen === 'exam' && timer > 0 && !isTimeUp) {
       interval = setInterval(() => setTimer(t => t - 1), 1000);
-    } else if (timer === 0 && screen === 'exam') {
-      completeExam();
+    } else if (timer === 0 && screen === 'exam' && !isTimeUp) {
+      setIsTimeUp(true);
     }
     return () => clearInterval(interval);
-  }, [screen, timer]);
+  }, [screen, timer, isTimeUp]);
 
   // --- UI Screens ---
 
@@ -610,33 +653,63 @@ export default function App() {
     </div>
   );
 
-  const MonthsScreen = () => (
-    <div className="p-3 sm:p-8 max-w-6xl mx-auto flex flex-col gap-4 sm:gap-8 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-        <header className="flex items-center gap-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue via-alfa-neon-blue/20 to-alfa-blue" />
-            <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all relative z-10">
-                <ArrowLeft className={`w-5 h-5 sm:w-8 sm:h-8 ${isRtl ? 'rotate-180' : ''}`} />
-            </button>
-            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tighter uppercase font-logo relative z-10">📅 {text.months}</h1>
-        </header>
+  const MonthsScreen = () => {
+    const months = exams.filter(m => (m.type || 'monthly') === 'monthly');
+    const trainings = exams.filter(m => m.type === 'training');
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 flex-1 overflow-y-auto pb-6 px-1 overscroll-contain">
-            {exams.map(m => (
-                <div key={m.id} onClick={() => m.status === 'active' && handleStartExam(m)} className={`group relative p-4 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${m.status === 'locked' ? 'opacity-20 grayscale pointer-events-none' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="flex justify-between items-start relative z-10">
-                        <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.id}</span>
-                        {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl group-hover:bg-alfa-neon-blue/10 transition-colors shadow-inner"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue transition-colors" /></div>}
-                    </div>
-                    <div className="relative z-10">
-                        <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">{lang === 'ar' ? m.name.ar : m.name.en}</h3>
-                        <p className={`text-[8px] sm:text-[11px] font-black uppercase tracking-[0.2em] mt-1 sm:mt-2 ${m.score ? 'text-emerald-500' : 'text-alfa-blue/40 font-logo'}`}>{m.score ? `${m.score}%` : (m.status === 'locked' ? 'Locked' : 'Available')}</p>
-                    </div>
+    return (
+        <div className="p-3 sm:p-8 max-w-6xl mx-auto flex flex-col gap-4 sm:gap-8 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+            <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue via-alfa-neon-blue/20 to-alfa-blue" />
+                <div className="flex items-center gap-4 relative z-10 w-full sm:w-auto">
+                    <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all">
+                        <ArrowLeft className={`w-5 h-5 sm:w-8 sm:h-8 ${isRtl ? 'rotate-180' : ''}`} />
+                    </button>
+                    <h1 className="text-xl sm:text-3xl font-black text-white tracking-tighter uppercase font-logo">📅 {text.months}</h1>
                 </div>
-            ))}
+                
+                <div className="flex bg-white/10 rounded-2xl p-1.5 border border-white/20 relative z-10 w-full sm:w-auto">
+                    <button 
+                        onClick={() => setCategoryTab('monthly')}
+                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'monthly' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}
+                    >
+                        {text.monthlyExams}
+                    </button>
+                    <button 
+                        onClick={() => setCategoryTab('training')}
+                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'training' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}
+                    >
+                        {text.training}
+                    </button>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 flex-1 overflow-y-auto pb-6 px-1 overscroll-contain">
+                {(categoryTab === 'monthly' ? months : trainings).map(m => {
+                    const hasFinished = user?.examResults.some(r => r.examId === m.id);
+                    const isAllowedRetake = user?.allowedRetakes?.includes(m.id);
+                    const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
+
+                    return (
+                        <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-4 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <div className="flex justify-between items-start relative z-10">
+                                <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.groupName ? `${m.groupName} ${m.id}` : m.id}</span>
+                                {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl group-hover:bg-alfa-neon-blue/10 transition-colors shadow-inner"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue transition-colors" /></div>}
+                            </div>
+                            <div className="relative z-10">
+                                <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">{lang === 'ar' ? m.name.ar : m.name.en}</h3>
+                                <p className={`text-[8px] sm:text-[11px] font-black uppercase tracking-[0.2em] mt-1 sm:mt-2 ${hasFinished ? 'text-emerald-500' : 'text-alfa-blue/40 font-logo'}`}>
+                                    {hasFinished ? (isAllowedRetake ? (lang === 'ar' ? 'متاح للإعادة' : 'Retake Available') : (lang === 'ar' ? 'تم الانتهاء' : 'Completed')) : (m.status === 'locked' ? 'Locked' : 'Available')}
+                                </p>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
-    </div>
-  );
+    );
+  };
 
   const ExamScreen = () => {
     if (!activeExam) return null;
@@ -658,61 +731,82 @@ export default function App() {
     
     return (
         <div className="h-full p-3 sm:p-8 max-w-2xl mx-auto flex flex-col gap-3 sm:gap-6 font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-            <header className="flex justify-between items-center gap-4 bg-white/30 backdrop-blur-xl p-3 sm:p-4 rounded-[1.2rem] sm:rounded-[2rem] border border-alfa-neon-blue/10 shadow-lg">
+            <header className="flex justify-between items-center gap-4 bg-white/30 backdrop-blur-xl p-3 sm:p-4 rounded-[1.2rem] sm:rounded-[2rem] border border-alfa-neon-blue/10 shadow-lg relative z-[60]">
                 <div className="flex flex-col gap-0.5 sm:gap-1">
                   <div className="text-[8px] sm:text-[10px] font-black opacity-40 uppercase tracking-[0.3em] font-logo">{text.progress}: {examStep + 1}/{examQs.length}</div>
                   <div className="h-1.5 w-20 sm:w-32 bg-alfa-blue/5 rounded-full overflow-hidden border border-alfa-blue/10 p-0.5">
                     <motion.div className="h-full bg-alfa-neon-blue rounded-full shadow-[0_0_10px_rgba(0,112,243,0.4)]" initial={{ width: 0 }} animate={{ width: `${progress}%` }} />
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-alfa-blue font-black bg-alfa-blue p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-xl border border-alfa-neon-blue/30 relative overflow-hidden group">
+                <div className="flex items-center gap-2 text-alfa-blue font-black bg-alfa-blue p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-xl border border-alfa-neon-blue/30 relative overflow-hidden group min-w-[90px] sm:min-w-[140px] justify-center">
                     <div className="absolute inset-0 bg-gradient-to-tr from-alfa-blue to-alfa-neon-blue/20" />
-                    <Timer className="w-4 h-4 sm:w-6 sm:h-6 text-alfa-neon-blue animate-pulse relative z-10" />
-                    <span className="font-logo tabular-nums tracking-widest whitespace-nowrap text-sm sm:text-xl text-white relative z-10">
+                    <Timer className={`w-4 h-4 sm:w-6 sm:h-6 text-alfa-neon-blue relative z-10 ${timer < 60 ? 'animate-bounce text-red-500' : 'animate-pulse'}`} />
+                    <span className={`font-logo tabular-nums tracking-widest whitespace-nowrap text-sm sm:text-xl text-white relative z-10 ${timer < 60 ? 'text-alfa-red' : ''}`}>
                         {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}
                     </span>
                 </div>
             </header>
             
-            <AlfaCard className="flex-1 flex flex-col justify-center min-h-0 border-alfa-neon-blue/5 !p-4 sm:!p-8">
-                 <div className="mb-4 sm:mb-8 text-center">
-                    <div className="inline-block px-3 py-1 rounded-full border border-alfa-neon-blue/10 bg-alfa-neon-blue/5 mb-3 sm:mb-5">
-                       <span className="text-[8px] sm:text-[10px] text-alfa-neon-blue font-black tracking-[0.3em] uppercase font-logo">{lang === 'ar' ? q.category.ar : q.category.en}</span>
-                    </div>
-                    <h1 className="text-lg sm:text-2xl font-black leading-tight text-alfa-blue tracking-tight">{lang === 'ar' ? q.text.ar : q.text.en}</h1>
-                 </div>
-                 
-                 <div className="flex flex-col gap-2.5 sm:gap-4 mt-2 max-w-xl mx-auto w-full">
-                    {q.type === 'tf' ? [text.true, text.false].map(opt => (
-                        <button key={opt} onClick={() => setAnswers({...answers, [q.id]: opt === text.true ? 'True' : 'False'})} className={`group h-12 sm:h-18 rounded-[0.8rem] sm:rounded-2xl text-xs sm:text-lg font-black transition-all duration-500 flex items-center justify-between px-5 sm:px-8 border-2 overflow-hidden relative ${answers[q.id] === (opt === text.true ? 'True' : 'False') ? 'bg-alfa-blue text-white border-alfa-neon-blue shadow-lg' : 'bg-white/40 backdrop-blur-md text-alfa-blue border-white hover:border-alfa-neon-blue/40'}`}>
-                            {answers[q.id] === (opt === text.true ? 'True' : 'False') && <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue opacity-50" />}
-                            <span className="relative z-10 uppercase">{opt}</span>
-                            <div className="relative z-10">
-                               {answers[q.id] === (opt === text.true ? 'True' : 'False') ? <CheckCircle2 className="w-5 h-5 sm:w-7 sm:h-7 text-alfa-neon-blue" /> : <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full border-2 border-alfa-blue/5 group-hover:border-alfa-neon-blue/20" />}
+            <div className="relative flex-1 flex flex-col min-h-0">
+                <AnimatePresence>
+                    {isTimeUp && (
+                        <motion.div 
+                            initial={{ opacity: 0 }} 
+                            animate={{ opacity: 1 }} 
+                            className="absolute inset-0 z-50 bg-alfa-blue/90 backdrop-blur-xl rounded-[1.5rem] sm:rounded-[2.5rem] flex flex-col items-center justify-center p-8 text-center"
+                        >
+                            <div className="w-20 h-20 sm:w-32 sm:h-32 rounded-full bg-alfa-neon-red/10 flex items-center justify-center mb-6 sm:mb-8 border border-alfa-neon-red/30 shadow-[0_0_50px_rgba(217,27,66,0.5)]">
+                                <AlertCircle className="w-12 h-12 sm:w-20 sm:h-20 text-alfa-neon-red" />
                             </div>
-                        </button>
-                    )) : (lang === 'ar' ? q.options?.ar : q.options?.en)?.map((opt, optIdx) => {
-                        const enOpt = q.options?.en?.[optIdx] || opt;
-                        return (
-                          <button key={optIdx} onClick={() => setAnswers({...answers, [q.id]: enOpt})} className={`group h-12 sm:h-18 rounded-[0.8rem] sm:rounded-2xl text-sm sm:text-xl font-black transition-all duration-500 flex items-center justify-between px-5 sm:px-8 border-2 overflow-hidden relative ${answers[q.id] === enOpt ? 'bg-alfa-blue text-white border-alfa-neon-blue shadow-lg' : 'bg-white/40 backdrop-blur-md text-alfa-blue border-white hover:border-alfa-neon-blue/40'}`}>
-                              {answers[q.id] === enOpt && <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue opacity-50" />}
-                              <span className="relative z-10 uppercase">{opt}</span>
-                              <div className="relative z-10">
-                                 {answers[q.id] === enOpt ? <CheckCircle2 className="w-5 h-5 sm:w-7 sm:h-7 text-alfa-neon-blue" /> : <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full border-2 border-alfa-blue/5 group-hover:border-alfa-neon-blue/20" />}
-                              </div>
-                          </button>
-                        );
-                    })}
-                 </div>
-            </AlfaCard>
+                            <h1 className="text-2xl sm:text-4xl font-black text-white mb-4 uppercase font-logo tracking-tighter">{text.timesUp}</h1>
+                            <p className="text-sm sm:text-xl text-white/60 font-black uppercase tracking-widest mb-10">{lang === 'ar' ? 'يمكنك رؤية نتيجتك الآن' : 'You can see your result now'}</p>
+                            <AlfaButton onClick={completeExam} className="w-full max-w-xs h-16 sm:h-20 text-lg sm:text-2xl shadow-neon-blue">
+                                {text.result}
+                            </AlfaButton>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <AlfaCard className="flex-1 flex flex-col justify-center min-h-[300px] sm:min-h-[450px] border-alfa-neon-blue/5 !p-4 sm:!p-8">
+                     <div className="mb-4 sm:mb-8 text-center">
+                        <div className="inline-block px-3 py-1 rounded-full border border-alfa-neon-blue/10 bg-alfa-neon-blue/5 mb-3 sm:mb-5">
+                           <span className="text-[8px] sm:text-[10px] text-alfa-neon-blue font-black tracking-[0.3em] uppercase font-logo">{lang === 'ar' ? q.category.ar : q.category.en}</span>
+                        </div>
+                        <h1 className="text-lg sm:text-2xl font-black leading-tight text-alfa-blue tracking-tight">{lang === 'ar' ? q.text.ar : q.text.en}</h1>
+                     </div>
+                     
+                     <div className="flex flex-col gap-2.5 sm:gap-4 mt-2 max-w-xl mx-auto w-full">
+                        {q.type === 'tf' ? [text.true, text.false].map(opt => (
+                            <button key={opt} disabled={isTimeUp} onClick={() => setAnswers({...answers, [q.id]: opt === text.true ? 'True' : 'False'})} className={`group h-12 sm:h-18 rounded-[0.8rem] sm:rounded-2xl text-xs sm:text-lg font-black transition-all duration-500 flex items-center justify-between px-5 sm:px-8 border-2 overflow-hidden relative ${answers[q.id] === (opt === text.true ? 'True' : 'False') ? 'bg-alfa-blue text-white border-alfa-neon-blue shadow-lg' : 'bg-white/40 backdrop-blur-md text-alfa-blue border-white hover:border-alfa-neon-blue/40'} ${isTimeUp ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                {answers[q.id] === (opt === text.true ? 'True' : 'False') && <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue opacity-50" />}
+                                <span className="relative z-10 uppercase">{opt}</span>
+                                <div className="relative z-10">
+                                   {answers[q.id] === (opt === text.true ? 'True' : 'False') ? <CheckCircle2 className="w-5 h-5 sm:w-7 sm:h-7 text-alfa-neon-blue" /> : <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full border-2 border-alfa-blue/5 group-hover:border-alfa-neon-blue/20" />}
+                                </div>
+                            </button>
+                        )) : (lang === 'ar' ? q.options?.ar : q.options?.en)?.map((opt, optIdx) => {
+                            const enOpt = q.options?.en?.[optIdx] || opt;
+                            return (
+                              <button key={optIdx} disabled={isTimeUp} onClick={() => setAnswers({...answers, [q.id]: enOpt})} className={`group h-12 sm:h-18 rounded-[0.8rem] sm:rounded-2xl text-sm sm:text-xl font-black transition-all duration-500 flex items-center justify-between px-5 sm:px-8 border-2 overflow-hidden relative ${answers[q.id] === enOpt ? 'bg-alfa-blue text-white border-alfa-neon-blue shadow-lg' : 'bg-white/40 backdrop-blur-md text-alfa-blue border-white hover:border-alfa-neon-blue/40'} ${isTimeUp ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                  {answers[q.id] === enOpt && <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue opacity-50" />}
+                                  <span className="relative z-10 uppercase">{opt}</span>
+                                  <div className="relative z-10">
+                                     {answers[q.id] === enOpt ? <CheckCircle2 className="w-5 h-5 sm:w-7 sm:h-7 text-alfa-neon-blue" /> : <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full border-2 border-alfa-blue/5 group-hover:border-alfa-neon-blue/20" />}
+                                  </div>
+                              </button>
+                            );
+                        })}
+                     </div>
+                </AlfaCard>
+            </div>
             
             <div className="shrink-0 flex gap-3 pt-1">
                 {examStep < examQs.length - 1 ? (
-                  <AlfaButton className="w-full h-12 sm:h-18 text-sm sm:text-xl font-logo !rounded-[1.2rem] sm:!rounded-[2rem] shadow-lg" onClick={() => setExamStep(examStep + 1)} disabled={!answers[q.id]}>
+                  <AlfaButton className="w-full h-12 sm:h-18 text-sm sm:text-xl font-logo !rounded-[1.2rem] sm:!rounded-[2rem] shadow-lg" onClick={() => setExamStep(examStep + 1)} disabled={!answers[q.id] || isTimeUp}>
                     {text.next}
                   </AlfaButton>
                 ) : (
-                  <AlfaButton className="w-full h-12 sm:h-18 text-sm sm:text-xl font-logo !rounded-[1.2rem] sm:!rounded-[2rem] bg-emerald-600 shadow-xl" onClick={completeExam} disabled={!answers[q.id]}>
+                  <AlfaButton className="w-full h-12 sm:h-18 text-sm sm:text-xl font-logo !rounded-[1.2rem] sm:!rounded-[2rem] bg-emerald-600 shadow-xl" onClick={completeExam} disabled={!answers[q.id] || isTimeUp}>
                     {text.finish}
                   </AlfaButton>
                 )}
@@ -939,12 +1033,31 @@ const AdminResults = () => {
                                                         </td>
                                                         <td className="px-6 py-4 text-center font-black text-alfa-blue/40 text-[10px] font-mono">{u.employeeId}</td>
                                                         <td className="px-6 py-4 text-center">
-                                                            {lastResult ? (
-                                                                <span className="font-black text-alfa-blue text-xs">{lastResult.score}%</span>
-                                                            ) : (
-                                                                <span className="text-[9px] font-black opacity-20">---</span>
-                                                            )}
-                                                        </td>
+                                                            <div className="flex flex-col gap-1 items-center">
+                                                                {u.examResults.length > 0 ? (
+                                                                    u.examResults.map(res => {
+                                                                        const isAllowed = u.allowedRetakes?.includes(res.examId);
+                                                                        const exName = exams.find(e => e.id === res.examId)?.name[lang as 'ar'|'en'] || 'Exam';
+                                                                        return (
+                                                                            <div key={res.examId} className="flex items-center gap-2 bg-alfa-blue/5 p-2 rounded-lg w-full justify-between min-w-[120px]">
+                                                                                <div className="flex flex-col items-start px-2">
+                                                                                    <span className="text-[8px] font-black opacity-40 uppercase truncate max-w-[60px]">{exName}</span>
+                                                                                    <span className="font-black text-alfa-blue text-xs">{res.score}%</span>
+                                                                                </div>
+                                                                                <button 
+                                                                                    onClick={() => toggleRetake(u.id, res.examId)} 
+                                                                                    className={`px-3 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all ${isAllowed ? 'bg-amber-100 text-amber-600 border border-amber-200' : 'bg-alfa-blue/10 text-alfa-blue/40 border border-transparent'}`}
+                                                                                >
+                                                                                    {isAllowed ? 'Allowed' : 'Allow Retake'}
+                                                                                </button>
+                                                                            </div>
+                                                                        );
+                                                                    })
+                                                                ) : (
+                                                                    <span className="text-[9px] font-black opacity-20">---</span>
+                                                                )}
+                                                            </div>
+                                                         </td>
                                                         <td className="px-6 py-4 text-center">
                                                             <span className="font-black text-alfa-blue text-sm">{u.totalScore.toLocaleString()}</span>
                                                         </td>
@@ -1301,6 +1414,8 @@ const AdminResults = () => {
     const [status, setStatus] = useState<'active' | 'locked'>(editingExam?.status || 'active');
     const [totalPoints, setTotalPoints] = useState(editingExam?.points || 100);
     const [selectedQs, setSelectedQs] = useState<string[]>(editingExam?.questions || []);
+    const [examType, setExamType] = useState<'monthly' | 'training'>(editingExam?.type || 'monthly');
+    const [groupName, setGroupName] = useState(editingExam?.groupName || '');
 
     const saveExam = () => {
         const id = editingExam?.id || (exams.length + 1).toString();
@@ -1310,7 +1425,9 @@ const AdminResults = () => {
             duration: Number(duration),
             status,
             questions: selectedQs,
-            points: totalPoints
+            points: totalPoints,
+            type: examType,
+            groupName
         };
 
         if (editingExam) {
@@ -1333,6 +1450,23 @@ const AdminResults = () => {
                 <div className="flex flex-col gap-6">
                     <AlfaCard title="Basic Info" className="border-alfa-blue/5">
                         <div className="flex flex-col gap-6 mt-4">
+                            <div className="flex bg-alfa-blue/5 rounded-2xl p-1.5 border border-alfa-blue/10">
+                                <button 
+                                    onClick={() => setExamType('monthly')}
+                                    className={`flex-1 px-4 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${examType === 'monthly' ? 'bg-white text-alfa-blue shadow-xl' : 'text-alfa-blue/40'}`}
+                                >
+                                    Monthly
+                                </button>
+                                <button 
+                                    onClick={() => setExamType('training')}
+                                    className={`flex-1 px-4 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${examType === 'training' ? 'bg-white text-alfa-blue shadow-xl' : 'text-alfa-blue/40'}`}
+                                >
+                                    Training
+                                </button>
+                            </div>
+                            {examType === 'training' && (
+                                <AlfaInput label={text.groupName} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+                            )}
                             <AlfaInput label="Arabic Name" value={arName} onChange={(e) => setArName(e.target.value)} />
                             <AlfaInput label="English Name" value={enName} onChange={(e) => setEnName(e.target.value)} />
                             <div className="grid grid-cols-2 gap-4">
