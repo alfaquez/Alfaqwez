@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import confetti from 'canvas-confetti';
 import { 
   Lock, Shield, User, Key, BarChart3, Trophy, 
   ChevronRight, Timer, CheckCircle2, XCircle, 
   ArrowLeft, AlertTriangle, List, Plus, Trash2,
   Calendar, Award, Briefcase, Zap, Cpu, Settings,
   LogOut, Globe, ClipboardList, Info, Download, FileSpreadsheet,
-  TrendingUp, Activity
+  TrendingUp, Activity, Frown, PartyPopper, AlertCircle
 } from 'lucide-react';
 import { AlfaButton } from './components/AlfaButton';
 import { AlfaInput } from './components/AlfaInput';
@@ -536,7 +537,7 @@ export default function App() {
                     <User className="w-5 h-5 sm:w-8 sm:h-8" />
                 </div>
                 <div>
-                   <h2 className="text-[9px] sm:text-xs text-white/50 font-black uppercase tracking-[0.3em] font-logo mb-0.5">{text.welcome}</h2>
+                   <h2 className="text-[9px] sm:text-xs text-white/50 font-black uppercase tracking-[0.3em] font-logo mb-0.5">👋 {text.welcome}</h2>
                    <h1 className="text-base sm:text-2xl font-black tracking-tight leading-tight text-white">{user?.name}</h1>
                 </div>
             </div>
@@ -551,10 +552,10 @@ export default function App() {
         </header>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
-            <AlfaCard title={`${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
-            <AlfaCard title={user?.totalScore.toLocaleString()} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
-            <AlfaCard title="Elite" subtitle="RANK" className="hidden lg:block border-l-4 border-l-amber-500 !p-4 sm:!p-6" />
-            <AlfaCard title="7" subtitle="BADGES" className="hidden lg:block border-l-4 border-l-purple-500 !p-4 sm:!p-6" />
+            <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
+            <AlfaCard title={`⭐ ${user?.totalScore.toLocaleString()}`} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
+            <AlfaCard title="🎖️ Elite" subtitle="RANK" className="hidden lg:block border-l-4 border-l-amber-500 !p-4 sm:!p-6" />
+            <AlfaCard title="💎 7" subtitle="BADGES" className="hidden lg:block border-l-4 border-l-purple-500 !p-4 sm:!p-6" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-6 flex-1 min-h-0">
@@ -616,7 +617,7 @@ export default function App() {
             <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all relative z-10">
                 <ArrowLeft className={`w-5 h-5 sm:w-8 sm:h-8 ${isRtl ? 'rotate-180' : ''}`} />
             </button>
-            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tighter uppercase font-logo relative z-10">{text.months}</h1>
+            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tighter uppercase font-logo relative z-10">📅 {text.months}</h1>
         </header>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 flex-1 overflow-y-auto pb-6 px-1 overscroll-contain">
@@ -724,33 +725,95 @@ export default function App() {
     const { score, earned, total } = calculateResultData();
     const passed = score >= 50;
 
+    useEffect(() => {
+        if (score === 100) {
+            const duration = 5 * 1000;
+            const animationEnd = Date.now() + duration;
+            const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+            const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+            const interval: any = setInterval(function() {
+                const timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+                const particleCount = 50 * (timeLeft / duration);
+                confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+                confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+            }, 250);
+        } else if (score >= 90) {
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        }
+    }, [score]);
+
+    const getResultUI = () => {
+        if (score === 100) return {
+            icon: <Trophy className="w-16 h-16 sm:w-20 sm:h-20" />,
+            color: 'text-yellow-500',
+            msg: lang === 'ar' ? '🏆 العلامة الكاملة! أسطوري!' : '🏆 Full Mark! Legendary!',
+            style: 'shadow-[0_0_40px_rgba(234,179,8,0.3)]'
+        };
+        if (score >= 90) return {
+            icon: <PartyPopper className="w-16 h-16 sm:w-20 sm:h-20" />,
+            color: 'text-emerald-500',
+            msg: lang === 'ar' ? '🥳 ممتاز جداً! اقتربت من الكمال' : '🥳 Excellent! Near perfection',
+            style: ''
+        };
+        if (score < 70) return {
+            icon: <XCircle className="w-16 h-16 sm:w-20 sm:h-20" />,
+            color: 'text-red-600',
+            msg: lang === 'ar' ? '😢 للأسف.. أداء ضعيف جداً' : '😢 Sadly.. very poor performance',
+            style: 'opacity-80 grayscale-[0.5]'
+        };
+        if (score < 80) return {
+            icon: <Frown className="w-16 h-16 sm:w-20 sm:h-20" />,
+            color: 'text-orange-500',
+            msg: lang === 'ar' ? '💔 نتيجة غير مرضية.. حاول بجد أكثر' : '💔 Unsatisfactory.. try harder next time',
+            style: ''
+        };
+        return {
+            icon: passed ? <CheckCircle2 className="w-16 h-16 sm:w-20 sm:h-20" /> : <XCircle className="w-16 h-16 sm:w-20 sm:h-20" />,
+            color: passed ? 'text-green-500' : 'text-alfa-red',
+            msg: passed ? (lang === 'ar' ? 'ناجح! استمر في التقدم' : 'Passed! Keep going') : (lang === 'ar' ? 'لم تجتاز.. حاول مرة أخرى' : 'Failed.. try again'),
+            style: ''
+        };
+    };
+
+    const ui = getResultUI();
+
     return (
         <div className="min-h-screen p-6 max-w-lg mx-auto flex flex-col items-center justify-center text-center gap-6 sm:gap-8" dir={isRtl ? 'rtl' : 'ltr'}>
-            <div className={`w-28 h-28 sm:w-32 sm:h-32 rounded-[2.5rem] alfa-glass flex items-center justify-center shadow-2xl border-white/60 ${passed ? 'text-green-500' : 'text-alfa-red'}`}>
-                {passed ? <CheckCircle2 className="w-16 h-16 sm:w-20 sm:h-20" /> : <XCircle className="w-16 h-16 sm:w-20 sm:h-20" />}
-            </div>
+            <motion.div 
+                initial={{ scale: 0.5, rotate: -20, opacity: 0 }}
+                animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                transition={{ type: 'spring', damping: 10 }}
+                className={`w-28 h-28 sm:w-32 sm:h-32 rounded-[2.5rem] alfa-glass flex items-center justify-center shadow-2xl border-white/60 ${ui.color} ${ui.style}`}
+            >
+                {ui.icon}
+            </motion.div>
             
-            <div className="flex flex-col gap-2">
+            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col gap-2">
                 <h2 className="text-alfa-blue/40 text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] font-display">{activeExam?.name.ar} / {activeExam?.name.en}</h2>
-                <h1 className="text-3xl sm:text-5xl font-black text-alfa-blue tracking-tight">{passed ? text.passed : text.failed}</h1>
-                <p className="text-alfa-text-secondary text-sm sm:text-base font-medium max-w-[280px] sm:max-w-none">{passed ? (lang === 'ar' ? 'أحسنت صنعاً!' : 'Well done!') : (lang === 'ar' ? 'حاول مرة أخرى' : 'Try again next time')}</p>
-            </div>
+                <h1 className="text-3xl sm:text-5xl font-black text-alfa-blue tracking-tight">
+                    {score === 100 ? (lang === 'ar' ? 'مذهل!' : 'Amazing!') : (passed ? text.passed : text.failed)}
+                </h1>
+                <p className="font-black text-alfa-text-secondary text-sm sm:text-lg max-w-[280px] sm:max-w-none">
+                    {ui.msg}
+                </p>
+            </motion.div>
 
-            <div className="grid grid-cols-2 gap-4 w-full">
-                <div className="alfa-glass p-6 sm:p-8 rounded-[2rem] flex flex-col items-center justify-center border-white/40">
-                    <span className="text-4xl sm:text-5xl font-black text-alfa-blue tracking-tighter">{score}%</span>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.4 }} className="grid grid-cols-2 gap-4 w-full">
+                <div className="alfa-glass p-6 sm:p-8 rounded-[2rem] flex flex-col items-center justify-center border-white/40 shadow-lg">
+                    <span className={`text-4xl sm:text-5xl font-black tracking-tighter ${ui.color}`}>{score}%</span>
                     <span className="text-[10px] sm:text-xs font-black text-alfa-blue/30 uppercase tracking-widest mt-2">{lang === 'ar' ? 'النسبة' : 'Percentage'}</span>
                 </div>
-                <div className="alfa-glass p-6 sm:p-8 rounded-[2rem] flex flex-col items-center justify-center border-white/40">
+                <div className="alfa-glass p-6 sm:p-8 rounded-[2rem] flex flex-col items-center justify-center border-white/40 shadow-lg">
                     <span className="text-3xl sm:text-4xl font-black text-alfa-blue tracking-tighter">{earned}/{total}</span>
                     <span className="text-[10px] sm:text-xs font-black text-alfa-blue/30 uppercase tracking-widest mt-2">{lang === 'ar' ? 'النقاط' : 'Score'}</span>
                 </div>
-            </div>
+            </motion.div>
 
-            <div className="flex flex-col gap-3 w-full mt-4">
-                <AlfaButton variant="outline" className="w-full h-14" onClick={() => setScreen('review')}>{text.review}</AlfaButton>
-                <AlfaButton className="w-full h-14" onClick={() => setScreen('dashboard')}>{text.back}</AlfaButton>
-            </div>
+            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.6 }} className="flex flex-col gap-3 w-full mt-4">
+                <AlfaButton variant="outline" className="w-full h-14 font-black" onClick={() => setScreen('review')}>{text.review}</AlfaButton>
+                <AlfaButton className="w-full h-14 font-black" onClick={() => setScreen('dashboard')}>{text.back}</AlfaButton>
+            </motion.div>
         </div>
     );
   };
@@ -929,10 +992,10 @@ const AdminResults = () => {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 shrink-0">
             {[
-              { scr: 'admin_users', icon: User, title: lang === 'ar' ? 'إدارة المستخدمين' : 'User Management', desc: `${users.length} Active Node`, color: 'alfa-neon-blue' },
-              { scr: 'admin_exams', icon: ClipboardList, title: lang === 'ar' ? 'إدارة الاختبارات' : 'Exams', desc: `${exams.length} Modules`, color: 'emerald-500' },
-              { scr: 'admin_questions', icon: List, title: lang === 'ar' ? 'الأسئلة' : 'Library', desc: `${questions.length} Entry`, color: 'amber-500' },
-              { scr: 'admin_results', icon: BarChart3, title: lang === 'ar' ? 'النتائج' : 'Telemetry', desc: 'Archive Access', color: 'purple-500' },
+              { scr: 'admin_users', icon: User, title: lang === 'ar' ? '👥 إدارة المستخدمين' : '👥 Users', desc: `${users.length} Active Node`, color: 'alfa-neon-blue' },
+              { scr: 'admin_exams', icon: ClipboardList, title: lang === 'ar' ? '📝 إدارة الاختبارات' : '📝 Exams', desc: `${exams.length} Modules`, color: 'emerald-500' },
+              { scr: 'admin_questions', icon: List, title: lang === 'ar' ? '📚 بنك الأسئلة' : '📚 Library', desc: `${questions.length} Entry`, color: 'amber-500' },
+              { scr: 'admin_results', icon: BarChart3, title: lang === 'ar' ? '📊 تقارير النتائج' : '📊 Telemetry', desc: 'Archive Access', color: 'purple-500' },
             ].map((btn, i) => (
               <button key={i} onClick={() => setScreen(btn.scr as any)} className="group text-start p-0 outline-none">
                 <AlfaCard className={`h-full border-transparent group-hover:border-${btn.color}/30 transition-all duration-500 flex flex-col items-center py-6 sm:py-10 shadow-xl group-hover:shadow-[0_20px_50px_rgba(0,112,243,0.15)] group-active:scale-95`}>
@@ -1117,13 +1180,13 @@ const AdminResults = () => {
             <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-14 sm:h-14 bg-white/10 alfa-glass rounded-xl flex items-center justify-center shadow-md active:scale-95 transition-all text-white border-white/20 relative z-10">
                 <ArrowLeft className={`w-6 h-6 ${isRtl ? 'rotate-180' : ''}`} />
             </button>
-            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight relative z-10">{lang === 'ar' ? 'إحصائياتي' : 'My Statistics'}</h1>
+            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight relative z-10">📉 {lang === 'ar' ? 'إحصائياتي' : 'My Statistics'}</h1>
         </header>
         <div className="grid grid-cols-2 gap-4">
             <AlfaCard title={`${user?.lastScore}%`} subtitle={text.latestResult} />
             <AlfaCard title={user?.totalScore.toLocaleString()} subtitle={text.totalExp} />
         </div>
-        <AlfaCard title="Monthly Performance">
+        <AlfaCard title="📈 Monthly Performance">
             <div className="h-48 w-full mt-4">
                <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={MOCK_PROGRESS}>
@@ -1139,34 +1202,36 @@ const AdminResults = () => {
     if (screen === 'login' || screen === 'exam') return null;
     
     const adminItems = [
-        { id: 'admin_dashboard', icon: <Cpu className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'الرئيسية' : 'Main' },
-        { id: 'admin_results', icon: <Activity className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'النتائج' : 'Results' },
-        { id: 'admin_users', icon: <User className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'الموظفين' : 'Users' },
-        { id: 'admin_exams', icon: <ClipboardList className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'الاختبارات' : 'Exams' },
+        { id: 'admin_dashboard', icon: <Cpu className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📊 الرئسيه' : '📊 Main' },
+        { id: 'admin_results', icon: <Activity className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📈 النتائج' : '📈 Results' },
+        { id: 'admin_users', icon: <User className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '👥 الموظفين' : '👥 Users' },
+        { id: 'admin_exams', icon: <ClipboardList className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📝 الاختبارات' : '📝 Exams' },
     ];
 
     const userItems = [
-        { id: 'months', icon: <Shield className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'الاختبارات' : 'Exams' },
-        { id: 'stats', icon: <Activity className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'النتائج' : 'Results' },
-        { id: 'dashboard', icon: <TrendingUp className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'الإحصائيات' : 'Stats' },
-        { id: 'leaderboard', icon: <Trophy className="w-5 h-5 sm:w-7 sm:h-7" />, label: lang === 'ar' ? 'الأفضل' : 'Top' },
+        { id: 'months', icon: <Shield className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📝 الاختبارات' : '📝 Exams' },
+        { id: 'stats', icon: <Activity className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📈 النتائج' : '📈 Results' },
+        { id: 'dashboard', icon: <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📊 الإحصائيات' : '📊 Stats' },
+        { id: 'leaderboard', icon: <Trophy className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '🏆 الأفضل' : '🏆 Top' },
     ];
 
     const items = user?.role === 'admin' ? adminItems : userItems;
 
     return (
-        <div className="w-full z-[100] bg-white/95 backdrop-blur-3xl border-t border-alfa-blue/5 shadow-[0_-15px_60px_rgba(0,40,85,0.06)] px-2 pb-safe shrink-0">
-            <div className="max-w-md mx-auto h-16 flex items-center justify-around translate-y-[-2px]">
+        <div className="w-full z-[100] bg-white/95 backdrop-blur-3xl border-t-2 border-alfa-blue/10 shadow-[0_-20px_60px_rgba(0,40,85,0.1)] px-2 pb-safe shrink-0">
+            <div className="max-w-md mx-auto h-20 sm:h-24 flex items-center justify-around translate-y-[-2px]">
                 {items.map(item => {
                     const isActive = screen === item.id || (item.id === 'admin_dashboard' && screen === 'admin_dashboard') || (item.id === 'dashboard' && screen === 'dashboard');
                     return (
-                        <button key={item.id} onClick={() => setScreen(item.id as Screen)} className={`relative flex flex-col items-center gap-1.5 px-3 h-full justify-center transition-all duration-500 group ${isActive ? 'text-alfa-blue' : 'text-alfa-blue/25 hover:text-alfa-blue/50'}`}>
-                            <div className={`transition-all duration-500 ${isActive ? 'scale-105 neon-glow-blue' : 'opacity-60'}`}>
-                                {item.icon}
+                        <button key={item.id} onClick={() => setScreen(item.id as Screen)} className={`relative flex flex-col items-center gap-1 sm:gap-2 px-4 h-full justify-center transition-all duration-500 group ${isActive ? 'text-alfa-blue' : 'text-alfa-blue/20 hover:text-alfa-blue/40'}`}>
+                            <div className={`transition-all duration-500 flex items-center justify-center ${isActive ? 'scale-110' : 'opacity-60'}`}>
+                                <div className={`p-3 rounded-2xl transition-all duration-500 ${isActive ? 'bg-gradient-to-br from-alfa-blue to-alfa-neon-blue text-white shadow-[0_10px_20px_rgba(0,112,243,0.3)] rotate-0' : 'bg-transparent rotate-0'}`}>
+                                    {item.icon}
+                                </div>
                             </div>
-                            <span className={`text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${isActive ? 'opacity-100' : 'opacity-40'}`}>{item.label}</span>
+                            <span className={`text-[10px] sm:text-sm font-black uppercase tracking-widest transition-all duration-500 ${isActive ? 'opacity-100 scale-110 text-alfa-blue' : 'opacity-30'}`}>{item.label}</span>
                             {isActive && (
-                                <motion.div layoutId="nav-glow" className="absolute top-0 w-8 h-1 bg-alfa-neon-blue rounded-full shadow-[0_0_15px_rgba(0,112,243,0.8)]" />
+                                <motion.div layoutId="nav-glow" className="absolute top-0 w-20 h-2 bg-gradient-to-r from-alfa-neon-blue via-white to-alfa-neon-blue rounded-full shadow-[0_0_30px_rgba(0,112,243,1)]" />
                             )}
                         </button>
                     );
