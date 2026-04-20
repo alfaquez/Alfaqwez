@@ -18,9 +18,13 @@
 
 @layer utilities {
   .alfa-glass {
-    @apply backdrop-blur-3xl border border-white max-md:border-white/60 shadow-2xl;
-    background: rgba(255, 255, 255, 0.45);
-    box-shadow: 0 25px 80px -12px rgba(0, 40, 85, 0.08), inset 0 0 20px rgba(255, 255, 255, 0.5);
+    @apply backdrop-blur-xl border border-white/40 shadow-2xl;
+    background: rgba(250, 250, 250, 0.6);
+    box-shadow: 0 10px 40px -10px rgba(0, 40, 85, 0.05), inset 0 0 15px rgba(255, 255, 255, 0.3);
+  }
+
+  .alfa-icon-pop {
+     @apply p-2 rounded-xl bg-white/70 border border-white/50 shadow-inner;
   }
 
   .alfa-neon-blue {

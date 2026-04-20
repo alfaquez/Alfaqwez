@@ -170,17 +170,15 @@ const MOCK_REGIONS = [
   { id: 'r21', name: { ar: 'الاسكندريه & البحيره', en: 'Alexandria & Beheira' }, password: '1121' },
   { id: 'r22', name: { ar: 'منطقه وسط الصعيد', en: 'Central Upper Egypt' }, password: '1122' },
   { id: 'r23', name: { ar: 'مدن القناه', en: 'Canal Cities' }, password: '1123' },
-  { id: 'training', name: { ar: 'منطقة التدريب', en: 'Training Area' }, password: '777' },
+  { id: 'training', name: { ar: 'منطقة التدريب', en: 'Training Area' }, password: 'train123' },
 ];
 
 // --- Mock Data ---
 const MOCK_MONTHS: ExamMonth[] = [
-  { id: '1', name: { ar: 'يناير', en: 'January' }, status: 'active', score: 85, duration: 300, questions: ['q1', 'q2'], points: 100 },
-  { id: '2', name: { ar: 'فبراير', en: 'February' }, status: 'active', score: 92, duration: 300, questions: ['q1', 'q3'], points: 100 },
-  { id: '3', name: { ar: 'مارس', en: 'March' }, status: 'active', duration: 600, questions: ['q2', 'q3'], points: 100 },
-  { id: '4', name: { ar: 'أبريل', en: 'April' }, status: 'locked', duration: 300, questions: [], points: 100 },
-  { id: '5', name: { ar: 'مايو', en: 'May' }, status: 'locked', duration: 300, questions: [], points: 100 },
-  { id: '6', name: { ar: 'يونيو', en: 'June' }, status: 'locked', duration: 300, questions: [], points: 100 },
+  { id: '1', name: { ar: 'يناير', en: 'January' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'monthly' },
+  { id: '2', name: { ar: 'فبراير', en: 'February' }, status: 'active', duration: 300, questions: ['q1', 'q3'], points: 100, type: 'monthly' },
+  { id: '3', name: { ar: 'مارس', en: 'March' }, status: 'active', duration: 600, questions: ['q2', 'q3'], points: 100, type: 'monthly' },
+  { id: 'T1', name: { ar: 'تدريب المهارات الأساسية', en: 'Basic Skills Training' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'training', groupName: 'Group A' },
 ];
 
 const MOCK_QUESTIONS: Question[] = [
@@ -233,9 +231,8 @@ const AlfaLogo = () => (
             transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
             className="w-full h-full flex items-center justify-center relative" 
          >
-            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] bg-alfa-blue flex items-center justify-center shadow-[0_15px_60px_rgba(0,112,243,0.25)] border border-alfa-neon-blue/20 relative overflow-hidden">
-               <div className="w-14 h-14 sm:w-22 sm:h-22 rounded-2xl bg-white shadow-2xl relative z-10" />
-               <div className="absolute inset-0 bg-gradient-to-tr from-alfa-blue via-alfa-neon-blue/10 to-alfa-blue" />
+            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] bg-white flex items-center justify-center shadow-[0_15px_60px_rgba(0,112,243,0.25)] border border-alfa-neon-blue/20 relative overflow-hidden">
+               <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
          </motion.div>
       </div>
@@ -487,10 +484,11 @@ export default function App() {
   // --- UI Screens ---
 
   const LoginScreen = () => {
+    const [loginMode, setLoginMode] = useState<'user' | 'admin' | null>(null);
     const [selectedRegion, setSelectedRegion] = useState(MOCK_REGIONS[0].id);
 
     return (
-      <div className="min-h-full max-h-screen flex flex-col items-center justify-center p-2 sm:p-4 relative overflow-hidden bg-transparent font-alfa overscroll-none">
+      <div className="min-h-full max-h-screen flex flex-col items-center justify-center p-6 sm:p-12 relative overflow-hidden bg-transparent font-alfa overscroll-none">
           {/* Extreme Blue Ambient Neon Glows */}
           <div className="absolute top-[-15%] left-[-15%] w-[60%] h-[60%] alfa-ambient-blue blur-[120px] rounded-full opacity-40" />
           <div className="absolute bottom-[-15%] right-[-15%] w-[60%] h-[60%] alfa-ambient-blue blur-[120px] rounded-full opacity-40" />
@@ -517,82 +515,72 @@ export default function App() {
               transition={{ delay: 0.2 }}
               className="w-full max-w-sm flex flex-col gap-2 relative z-10 mt-2 sm:mt-6"
           >
-              <form onSubmit={handleLogin} className="flex flex-col gap-2 sm:gap-4 p-2 sm:p-6 relative">
-                  <AlfaInput 
-                    label={text.empName} 
-                    name="name" 
-                    neon
-                    className="h-12 sm:h-18"
-                    dir={isRtl ? 'rtl' : 'ltr'} 
-                    icon={<User className="w-5 h-5 sm:w-6 sm:h-6" />} 
-                  />
-                  <AlfaInput 
-                    label={text.empCode} 
-                    name="employeeId" 
-                    neon
-                    className="h-12 sm:h-18"
-                    dir={isRtl ? 'rtl' : 'ltr'} 
-                    icon={<ClipboardList className="w-5 h-5 sm:w-6 sm:h-6" />} 
-                  />
-                  
-                  <div className="flex flex-col gap-1 sm:gap-2">
-                    <label className="text-[10px] font-black opacity-30 uppercase tracking-[0.2em] px-3">{text.region}</label>
-                    <div className="relative group">
-                        <select 
-                            name="region"
-                            value={selectedRegion}
-                            onChange={(e) => setSelectedRegion(e.target.value)}
-                            className="w-full h-12 sm:h-18 rounded-[1.2rem] bg-white/40 border-2 border-alfa-neon-blue/10 backdrop-blur-3xl px-6 font-black text-alfa-blue outline-none appearance-none focus:border-alfa-neon-blue/40 transition-all shadow-[0_15px_30px_rgba(0,112,243,0.08)] text-sm sm:text-base"
-                        >
-                            {MOCK_REGIONS.map(r => (
-                                <option key={r.id} value={r.id}>{lang === 'ar' ? r.name.ar : r.name.en}</option>
-                            ))}
-                        </select>
-                        <ChevronRight className={`absolute bottom-3.5 sm:bottom-6 ${isRtl ? 'left-5' : 'right-5'} w-5 h-5 opacity-30 pointer-events-none rotate-90`} />
-                    </div>
-                  </div>
-
-                  <AlfaInput 
-                    label={text.password} 
-                    name="password" 
-                    neon
-                    className="h-12 sm:h-18"
-                    placeholder={text.passwordPlaceholder} 
-                    type="password" 
-                    dir={isRtl ? 'rtl' : 'ltr'} 
-                    icon={<Lock className="w-5 h-5 sm:w-6 sm:h-6" />} 
-                  />
-
-                  <AlfaButton type="submit" className="w-full mt-1 h-12 sm:h-[70px] text-base sm:text-xl shadow-xl alfa-neon-blue">
+              {!loginMode ? (
+                <div className="flex flex-col gap-6 p-4 mt-4">
+                   <button onClick={() => setLoginMode('admin')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s] ease-in-out" />
+                      <Shield className="w-7 h-7 text-alfa-neon-blue drop-shadow-[0_0_8px_rgba(0,112,243,0.8)]" /> 
+                      <span className="text-white font-black text-lg tracking-widest alfa-text-neon uppercase font-logo">Administrator</span>
+                   </button>
+                   <button onClick={() => setLoginMode('user')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s] ease-in-out" />
+                      <User className="w-7 h-7 text-alfa-neon-blue drop-shadow-[0_0_8px_rgba(0,112,243,0.8)]" /> 
+                      <span className="text-white font-black text-lg tracking-widest alfa-text-neon uppercase font-logo">Employee User</span>
+                   </button>
+                </div>
+              ) : (
+                <form onSubmit={handleLogin} className="flex flex-col gap-2 p-2 relative">
+                  <button type="button" onClick={() => setLoginMode(null)} className="mb-2 text-white/50 text-[10px] font-black uppercase underline">Back</button>
+                  {loginMode === 'user' && (
+                    <>
+                      <AlfaInput label={text.empName} name="name" neon className="h-12" icon={<User className="w-5 h-5"/>} />
+                      <AlfaInput label={text.empCode} name="employeeId" neon className="h-12" icon={<ClipboardList className="w-5 h-5"/>} />
+                      <select name="region" value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="w-full h-12 rounded-[1rem] bg-white/10 border border-white/20 px-4 text-white">
+                          {MOCK_REGIONS.map(r => <option key={r.id} value={r.id} className="text-alfa-blue">{lang === 'ar' ? r.name.ar : r.name.en}</option>)}
+                      </select>
+                    </>
+                  )}
+                  <AlfaInput label={text.password} name="password" neon className="h-12" placeholder={text.passwordPlaceholder} type="password" icon={<Lock className="w-5 h-5"/>} />
+                  {/* Hidden input for employeeId if in admin mode */}
+                  {loginMode === 'admin' && <input type="hidden" name="employeeId" value="admin" />}
+                  <AlfaButton type="submit" className="w-full mt-2 h-14 text-xl shadow-xl alfa-neon-blue">
                       {text.login}
                   </AlfaButton>
-              </form>
+                </form>
+              )}
           </motion.div>
       </div>
     );
   };
 
   const DashboardScreen = () => (
-    <div className="p-2 sm:p-6 max-w-5xl mx-auto flex flex-col gap-3 sm:gap-6 overflow-hidden h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-        <header className="flex justify-between items-center mb-1 sm:mb-2 shrink-0 alfa-glass p-3 sm:p-5 rounded-[1.2rem] sm:rounded-[2rem] border-white/80 relative overflow-hidden">
-            <div className="flex items-center gap-3 sm:gap-5 relative z-10">
-                <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-white/10 flex items-center justify-center text-white shadow-xl border border-white/20">
-                    <User className="w-5 h-5 sm:w-8 sm:h-8" />
+    <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 overflow-hidden h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+        <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
+            <div className="flex items-center gap-2 sm:gap-4 relative z-10">
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-white/10 flex items-center justify-center text-white shadow-xl border border-cyan-400/50 shadow-[inset_0_0_5px_white]">
+                    <User className="w-5 h-5 sm:w-7 sm:h-7 text-cyan-400" />
                 </div>
                 <div>
-                   <h2 className="text-[9px] sm:text-xs text-white/50 font-black uppercase tracking-[0.3em] font-logo mb-0.5">👋 {text.welcome}</h2>
-                   <h1 className="text-base sm:text-2xl font-black tracking-tight leading-tight text-white">{user?.name}</h1>
+                   <h2 className="text-[8px] sm:text-[10px] text-white/50 font-black uppercase tracking-[0.3em] font-logo mb-0">👋 {text.welcome}</h2>
+                   <h1 className="text-sm sm:text-xl font-black tracking-tight leading-tight text-white">{user?.name}</h1>
                 </div>
             </div>
-            <div className="flex gap-2 sm:gap-2.5 relative z-10">
-                <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="w-9 h-9 sm:w-14 sm:h-14 bg-white/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-white/20 transition-all active:scale-90">
-                    <Globe className="w-4 h-4 sm:w-7 sm:h-7" />
+            <div className="flex gap-2 sm:gap-3 relative z-10">
+                <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="w-9 h-9 sm:w-12 sm:h-12 bg-white/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
+                    <Globe className="w-4 h-4 sm:w-6 h-6 text-cyan-400" />
                 </button>
-                <button onClick={() => setScreen('login')} className="w-9 h-9 sm:w-14 sm:h-14 bg-alfa-red/80 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-white/20 transition-all active:scale-90">
-                    <LogOut className="w-4 h-4 sm:w-7 sm:h-7" />
+                <button onClick={() => setScreen('login')} className="w-9 h-9 sm:w-12 sm:h-12 bg-alfa-red/80 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
+                    <LogOut className="w-4 h-4 sm:w-6 h-6 text-white" />
                 </button>
             </div>
         </header>
+
+        {/* Sleek Bottom Bar */}
+        <div className="fixed bottom-0 left-0 right-0 h-14 bg-alfa-blue flex items-center justify-around z-[100] border-t border-alfa-neon-blue">
+          <button className="text-black font-black uppercase text-xs">Home</button>
+          <button className="text-black font-black uppercase text-xs">Exams</button>
+          <button className="text-black font-black uppercase text-xs">Profile</button>
+        </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
             <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
@@ -644,7 +632,7 @@ export default function App() {
         </div>
 
         <div className="shrink-0 pt-2 sm:pt-4">
-            <button onClick={() => setScreen('months')} className="w-full h-12 sm:h-16 bg-alfa-blue text-white rounded-[1.2rem] sm:rounded-[2rem] font-logo flex items-center justify-center gap-3 sm:gap-4 shadow-[0_15px_30px_rgba(0,40,85,0.2)] hover:shadow-alfa-neon-blue/20 transition-all active:scale-[0.98] group overflow-hidden relative">
+            <button onClick={() => setScreen('months')} className="w-full h-14 sm:h-20 bg-alfa-blue text-white rounded-[2rem] sm:rounded-[3rem] font-logo flex items-center justify-center gap-3 sm:gap-4 shadow-[0_15px_30px_rgba(0,40,85,0.2)] hover:shadow-alfa-neon-blue/20 transition-all active:scale-[0.98] group overflow-hidden relative">
                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                <Zap className="w-5 h-5 sm:w-7 sm:h-7 text-alfa-neon-blue group-hover:scale-125 transition-transform" />
                <span className="text-sm sm:text-xl uppercase tracking-[0.2em]">{text.startExam}</span>
@@ -658,8 +646,8 @@ export default function App() {
     const trainings = exams.filter(m => m.type === 'training');
 
     return (
-        <div className="p-3 sm:p-8 max-w-6xl mx-auto flex flex-col gap-4 sm:gap-8 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-            <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
+        <div className="p-6 sm:p-12 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-12 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+            <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue via-alfa-neon-blue/20 to-alfa-blue" />
                 <div className="flex items-center gap-4 relative z-10 w-full sm:w-auto">
                     <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all">
@@ -691,7 +679,7 @@ export default function App() {
                     const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
 
                     return (
-                        <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-4 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
+                        <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
                             <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
                             <div className="flex justify-between items-start relative z-10">
                                 <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.groupName ? `${m.groupName} ${m.id}` : m.id}</span>
@@ -730,8 +718,8 @@ export default function App() {
     const progress = ((examStep + 1) / examQs.length) * 100;
     
     return (
-        <div className="h-full p-3 sm:p-8 max-w-2xl mx-auto flex flex-col gap-3 sm:gap-6 font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-            <header className="flex justify-between items-center gap-4 bg-white/30 backdrop-blur-xl p-3 sm:p-4 rounded-[1.2rem] sm:rounded-[2rem] border border-alfa-neon-blue/10 shadow-lg relative z-[60]">
+        <div className="h-full p-6 sm:p-12 max-w-2xl mx-auto flex flex-col gap-6 sm:gap-10 font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+            <header className="flex justify-between items-center gap-4 bg-white/30 backdrop-blur-xl p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border border-alfa-neon-blue/10 shadow-lg relative z-[60]">
                 <div className="flex flex-col gap-0.5 sm:gap-1">
                   <div className="text-[8px] sm:text-[10px] font-black opacity-40 uppercase tracking-[0.3em] font-logo">{text.progress}: {examStep + 1}/{examQs.length}</div>
                   <div className="h-1.5 w-20 sm:w-32 bg-alfa-blue/5 rounded-full overflow-hidden border border-alfa-blue/10 p-0.5">
