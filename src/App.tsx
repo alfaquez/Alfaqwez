@@ -12,6 +12,7 @@ import {
 import { AlfaButton } from './components/AlfaButton';
 import { AlfaInput } from './components/AlfaInput';
 import { AlfaCard } from './components/AlfaCard';
+import { supabase } from './lib/supabaseClient';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, AreaChart, Area 
@@ -322,6 +323,47 @@ export default function App() {
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
 
+  // Fetch Data from Supabase
+  useEffect(() => {
+    async function fetchData() {
+      const { data: usersData } = await supabase.from('users').select('*');
+      if (usersData) setUsers(usersData as UserData[]);
+
+      const { data: examsData } = await supabase.from('exams').select('*');
+      if (examsData) setExams(examsData as ExamMonth[]);
+
+      const { data: questionsData } = await supabase.from('questions').select('*');
+      // تحويل أسماء الأعمدة لتتوافق مع التطبيق
+      const mappedQuestions = questionsData?.map(q => ({
+        ...q,
+        examId: q.examid,
+        text: q.text_ar, // أو text_en حسب اللغة
+        correctAnswer: q.correctanswer
+      }));
+      setQuestions(mappedQuestions || []);
+      if (questionsData) setQuestions(questionsData as Question[]);
+    }
+    fetchData();
+
+    // Setup Real-time subscriptions
+    const channels = [
+      supabase.channel('users_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, payload => {
+        // Handle changes, e.g., refetch or update state
+        fetchData(); 
+      }).subscribe(),
+      supabase.channel('exams_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, payload => {
+         fetchData();
+      }).subscribe(),
+      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, payload => {
+        fetchData();
+      }).subscribe()
+    ];
+
+    return () => {
+      channels.forEach(channel => supabase.removeChannel(channel));
+    };
+  }, []);
+
   const text = translations[lang];
   const isRtl = lang === 'ar';
 
@@ -335,7 +377,7 @@ export default function App() {
     
     // Admin override
     if (employeeId === 'admin' && password === 'admin') {
-      setUser(users.find(u => u.id === 'admin')!);
+      setUser({ id: 'admin', name: 'Admin', role: 'admin' } as UserData);
       setScreen('dashboard');
       return;
     }
@@ -386,6 +428,14 @@ export default function App() {
         return;
     }
 
+    // تصفية الأسئلة باستخدام examid (الاسم الصحيح في القاعدة)
+    const examQs = questions.filter(q => q.examid === exam.id);
+    
+    if (examQs.length === 0) {
+        alert("لا توجد أسئلة لهذا الاختبار.");
+        return;
+    }
+
     setActiveExam(exam);
     setExamStep(0);
     setAnswers({});
@@ -423,34 +473,34 @@ export default function App() {
     return Math.round((earnedPoints / totalPossiblePoints) * 100);
   };
 
-  const completeExam = () => {
+  const completeExam = async () => {
     if (!activeExam || !user) return;
     const { score, earned, total } = calculateResultData();
     
-    if (user.role !== 'admin') {
-        const result: ExamResult = {
-            examId: activeExam.id,
-            monthName: activeExam.name,
+     // Save to Supabase
+    const { error } = await supabase
+        .from('results')
+        .insert({
+            userId: user.id,
+            examid: activeExam.id, // استخدام examid وليس examId
             score: score,
             rawScore: earned,
-            maxScore: total,
-            date: new Date().toLocaleDateString()
-        };
-        
-        setUsers(prev => prev.map(u => {
-            if (u.id === user.id) {
-                const alreadyTaken = u.examResults.some(r => r.examId === activeExam.id);
-                if (alreadyTaken) return u;
-                return {
-                    ...u,
-                    lastScore: score,
-                    totalScore: u.totalScore + score,
-                    examResults: [...u.examResults, result]
-                };
-            }
-            return u;
-        }));
+            maxScore: total
+        });
+
+    if (error) {
+        console.error("Error saving result:", error);
+        alert("Failed to save result. Please try again.");
+        return;
     }
+
+    // Update user score in Supabase
+    const newTotalScore = (user.totalScore || 0) + score;
+    await supabase
+        .from('users')
+        .update({ totalScore: newTotalScore, lastScore: score })
+        .eq('id', user.id);
+
     setScreen('result');
   };
 
@@ -536,7 +586,7 @@ export default function App() {
                       <AlfaInput label={text.empName} name="name" neon className="h-12" icon={<User className="w-5 h-5"/>} />
                       <AlfaInput label={text.empCode} name="employeeId" neon className="h-12" icon={<ClipboardList className="w-5 h-5"/>} />
                       <select name="region" value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="w-full h-12 rounded-[1rem] bg-white/10 border border-white/20 px-4 text-white">
-                          {MOCK_REGIONS.map(r => <option key={r.id} value={r.id} className="text-alfa-blue">{lang === 'ar' ? r.name.ar : r.name.en}</option>)}
+                          {MOCK_REGIONS.map(r => <option key={r.id} value={r.id} className="text-black font-bold">{lang === 'ar' ? r.name.ar : r.name.en}</option>)}
                       </select>
                     </>
                   )}
@@ -584,7 +634,7 @@ export default function App() {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
             <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
-            <AlfaCard title={`⭐ ${user?.totalScore.toLocaleString()}`} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
+            <AlfaCard title={`⭐ ${user?.totalScore?.toLocaleString() ?? '0'}`} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
             <AlfaCard title="🎖️ Elite" subtitle="RANK" className="hidden lg:block border-l-4 border-l-amber-500 !p-4 sm:!p-6" />
             <AlfaCard title="💎 7" subtitle="BADGES" className="hidden lg:block border-l-4 border-l-purple-500 !p-4 sm:!p-6" />
         </div>
@@ -1047,7 +1097,7 @@ const AdminResults = () => {
                                                             </div>
                                                          </td>
                                                         <td className="px-6 py-4 text-center">
-                                                            <span className="font-black text-alfa-blue text-sm">{u.totalScore.toLocaleString()}</span>
+                                                            <span className="font-black text-alfa-blue text-sm">{u?.totalScore?.toLocaleString() ?? '0'}</span>
                                                         </td>
                                                     </tr>
                                                 );
@@ -1265,7 +1315,7 @@ const AdminResults = () => {
                         </div>
                     </div>
                     <div className="text-right">
-                        <span className="font-black text-sm sm:text-xl text-alfa-blue block">{u.totalScore.toLocaleString()} pt</span>
+                        <span className="font-black text-sm sm:text-xl text-alfa-blue block">{u?.totalScore?.toLocaleString() ?? '0'} pt</span>
                         <span className="text-[10px] sm:text-xs font-black opacity-20 uppercase tracking-[0.3em]">Total Points</span>
                     </div>
                 </div>
@@ -1285,7 +1335,7 @@ const AdminResults = () => {
         </header>
         <div className="grid grid-cols-2 gap-4">
             <AlfaCard title={`${user?.lastScore}%`} subtitle={text.latestResult} />
-            <AlfaCard title={user?.totalScore.toLocaleString()} subtitle={text.totalExp} />
+            <AlfaCard title={user?.totalScore?.toLocaleString() ?? '0'} subtitle={text.totalExp} />
         </div>
         <AlfaCard title="📈 Monthly Performance">
             <div className="h-48 w-full mt-4">
