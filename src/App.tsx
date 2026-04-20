@@ -515,15 +515,41 @@ export default function App() {
         }
 
         const { data: usersData } = await supabase.from('users').select('*');
+        const { data: resultsData } = await supabase.from('results').select('*');
+        
         if (usersData && usersData.length > 0) {
-          const mappedUsers = usersData.map(u => ({
-            ...u,
-            employeeId: u.employee_id || u.employeeId,
-            totalScore: Number(u.total_score || u.totalScore || 0),
-            lastScore: Number(u.last_score || u.lastScore || 0),
-            examResults: Array.isArray(u.exam_results || u.examResults) ? (u.exam_results || u.examResults) : []
-          }));
+          const mappedUsers = usersData.map(u => {
+            const userResults = (resultsData || [])
+              .filter(r => r.user_id === u.id)
+              .map(r => ({
+                examId: String(r.exam_id),
+                score: Number(r.score),
+                rawScore: Number(r.raw_score),
+                maxScore: Number(r.max_score),
+                date: r.created_at || r.date
+              }));
+            
+            // Calculate total score from results if DB total_score is 0 for robustness
+            const dbScore = Number(u.total_score || u.totalScore || 0);
+            const calculatedTotal = userResults.reduce((acc, res) => acc + res.score, 0);
+            const currentTotalScore = dbScore > 0 ? dbScore : calculatedTotal;
+
+            return {
+              ...u,
+              employeeId: u.employee_id || u.employeeId,
+              totalScore: currentTotalScore,
+              lastScore: Number(u.last_score || u.lastScore || 0),
+              examResults: userResults,
+              allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
+            };
+          });
           setUsers(mappedUsers as UserData[]);
+          
+          // Refresh logged in user data if exists
+          if (user && user.id !== 'admin') {
+            const updatedUser = mappedUsers.find(curr => curr.id === user.id);
+            if (updatedUser) setUser(updatedUser as UserData);
+          }
         }
 
       } catch (err: any) {
@@ -537,7 +563,8 @@ export default function App() {
     const channels = [
       supabase.channel('users_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
       supabase.channel('exams_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchData()).subscribe(),
-      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchData()).subscribe()
+      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchData()).subscribe(),
+      supabase.channel('results_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => fetchData()).subscribe()
     ];
 
     return () => {
@@ -670,9 +697,30 @@ export default function App() {
     if (!activeExam || !user) return;
     const { score, earned, total } = calculateResultData();
     
-    // Save to Supabase (Gracefully handle failures)
+    // 1. Prepare Updated State Locally (Final source of truth)
+    const newResult = {
+        examId: activeExam.id,
+        score: score,
+        rawScore: earned,
+        maxScore: total,
+        date: new Date().toISOString()
+    };
+    
+    const updatedUser: UserData = {
+        ...user,
+        totalScore: (user.totalScore || 0) + score, // Cumulative score
+        lastScore: score,
+        examResults: [...(user.examResults || []), newResult]
+    };
+    
+    // Apply locally first to fix the "Zero" issue in UI immediately
+    setUser(updatedUser);
+    setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+
+    // 2. Persist to Supabase
     try {
-        const { error } = await supabase
+        // Save to Results table
+        const { error: resErr } = await supabase
             .from('results')
             .insert([{
                 user_id: user.id,
@@ -682,19 +730,26 @@ export default function App() {
                 max_score: total
             }]);
 
-        if (error) console.error("Error saving result to Supabase:", error);
+        if (resErr) console.error("Error saving result:", resErr);
 
-        // Update user score in Supabase
-        const newTotalScore = (user.totalScore || 0) + score;
-        await supabase
+        // Update User profile (try multiple conventions for robustness)
+        const { error: userErr } = await supabase
             .from('users')
-            .update({ total_score: newTotalScore, last_score: score })
+            .update({ 
+                total_score: updatedUser.totalScore, 
+                last_score: score,
+                totalScore: updatedUser.totalScore,
+                lastScore: score 
+            })
             .eq('id', user.id);
+            
+        if (userErr) console.error("Error updating user scores:", userErr);
+        
     } catch (err) {
         console.error("Database operation failed:", err);
     }
 
-    // ALWAYS proceed to result screen
+    // Move to result screen
     setScreen('result');
   };
 
