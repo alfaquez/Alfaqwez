@@ -233,7 +233,15 @@ const AlfaLogo = () => (
             className="w-full h-full flex items-center justify-center relative" 
          >
             <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] bg-white flex items-center justify-center shadow-[0_15px_60px_rgba(0,112,243,0.25)] border border-alfa-neon-blue/20 relative overflow-hidden">
-               <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+               <img 
+                 src="/logo.png" 
+                 alt="ALFA Logo" 
+                 referrerPolicy="no-referrer"
+                 className="w-full h-full object-contain" 
+                 onError={(e) => {
+                   (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/alfa/200/200';
+                 }}
+               />
             </div>
          </motion.div>
       </div>
@@ -737,51 +745,8 @@ export default function App() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="w-full max-w-sm flex flex-col gap-2 relative z-10 mt-2 sm:mt-6">
-              {/* Database Status Indicator */}
-              <div className="flex items-center justify-center gap-2 mb-2">
-                  <div className={`w-2 h-2 rounded-full ${dbStatus.status === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus.status === 'error' ? 'bg-red-500' : 'bg-amber-500'}`} />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
-                      DB: {dbStatus.status === 'connected' ? 'CONNECTED' : dbStatus.status === 'syncing' ? 'SYNCING...' : dbStatus.status === 'empty' ? 'NO DATA' : 'DISCONNECTED'}
-                      {dbStatus.details && ` • ${dbStatus.details}`}
-                  </span>
-              </div>
-              
               {!loginMode ? (
                 <div className="flex flex-col gap-6 p-4 mt-4">
-                   {/* Seed Data Button for initialization */}
-                   {dbStatus.status === 'empty' && (
-                     <button 
-                        onClick={async () => {
-                           setDbStatus({ status: 'syncing', details: 'Seeding Database...' });
-                           try {
-                             // Seed One Exam
-                             const { data: exData, error: exErr } = await supabase.from('exams').insert([
-                               { id: '1', name: { ar: 'يناير 2026', en: 'January 2026' }, status: 'active', duration: 1800, questions: ['q1', 'q2'], points: 100, type: 'monthly' }
-                             ]).select();
-                             
-                             if (exErr) throw exErr;
-
-                             // Seed Questions
-                             const { error: qErr } = await supabase.from('questions').insert([
-                               { id: 'q1', examid: '1', text: { ar: 'هل يجب غسل اليدين قبل سحب العينة؟', en: 'Wash hands before sampling?' }, type: 'tf', correctAnswer: 'True', points: 50 },
-                               { id: 'q2', examid: '1', text: { ar: 'ما هو اللون القياسي لأنبوب السيترات؟', en: 'Standard Citrate tube color?' }, type: 'mc', options: { ar: ['أزرق', 'أحمر', 'أسود'], en: ['Blue', 'Red', 'Black'] }, correctAnswer: 'Blue', points: 50 }
-                             ]);
-                             
-                             if (qErr) throw qErr;
-                             
-                             alert('Database Seeded Successfully! Refreshing...');
-                             window.location.reload();
-                           } catch (err: any) {
-                             alert('Seed Error: ' + err.message);
-                             setDbStatus({ status: 'error', details: err.message });
-                           }
-                        }}
-                        className="mb-4 py-2 px-4 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/30 transition-all flex items-center justify-center gap-2"
-                     >
-                        <Zap className="w-3 h-3" /> Initialize Database with Sample Exam
-                     </button>
-                   )}
-
                    <button onClick={() => setLoginMode('admin')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
                       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s] ease-in-out" />
                       <Shield className="w-7 h-7 text-alfa-neon-blue drop-shadow-[0_0_8px_rgba(0,112,243,0.8)]" /> 
@@ -1288,7 +1253,7 @@ const AdminResults = () => {
             ))}
         </div>
 
-        <AlfaCard title="Network Activity Telemetry" subtitle="REALTIME ANALYTICS" className="flex-1 min-h-0 bg-alfa-blue/[0.02] p-4 sm:p-10">
+        <AlfaCard title="Network Activity Telemetry" subtitle="REALTIME ANALYTICS" className="flex-1 min-h-0 bg-alfa-blue/[0.02] p-4 sm:p-10 relative">
              <div className="h-full w-full min-h-[150px]">
                <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={MOCK_PROGRESS}>
@@ -1298,6 +1263,38 @@ const AdminResults = () => {
                     <Area type="monotone" dataKey="score" stroke="#0070f3" strokeWidth={5} fill="#0070f3" fillOpacity={0.08} />
                   </AreaChart>
                </ResponsiveContainer>
+             </div>
+             
+             {/* Radical Database Solution: Maintenance Actions */}
+             <div className="absolute top-4 right-4 flex gap-2">
+                <button 
+                  onClick={async () => {
+                    if (!confirm('Are you sure you want to initialize the database with sample data? This will add initial exams and questions.')) return;
+                    setDbStatus({ status: 'syncing', details: 'Seeding Database...' });
+                    try {
+                      const { error: exErr } = await supabase.from('exams').insert([
+                        { id: '1', name: { ar: 'يناير 2026', en: 'January 2026' }, status: 'active', duration: 1800, questions: ['q1', 'q2'], points: 100, type: 'monthly' }
+                      ]);
+                      if (exErr) throw exErr;
+
+                      const { error: qErr } = await supabase.from('questions').insert([
+                        { id: 'q1', examid: '1', text: { ar: 'هل يجب غسل اليدين قبل سحب العينة؟', en: 'Wash hands before sampling?' }, type: 'tf', correctAnswer: 'True', points: 50 },
+                        { id: 'q2', examid: '1', text: { ar: 'ما هو اللون القياسي لأنبوب السيترات؟', en: 'Standard Citrate tube color?' }, type: 'mc', options: { ar: ['أزرق', 'أحمر', 'أسود'], en: ['Blue', 'Red', 'Black'] }, correctAnswer: 'Blue', points: 50 }
+                      ]);
+                      if (qErr) throw qErr;
+                      
+                      alert('Database Seeded Successfully!');
+                      window.location.reload();
+                    } catch (err: any) {
+                      alert('Seed Error: ' + err.message);
+                    }
+                  }}
+                  className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/20 transition-all" title="Seed Database">
+                  <Zap className="w-5 h-5" />
+                </button>
+                <div className={`p-2 rounded-lg ${dbStatus.status === 'connected' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'} border border-current/20 font-black text-[10px] flex items-center gap-2`}>
+                   <Activity className="w-4 h-4" /> {dbStatus.status.toUpperCase()}
+                </div>
              </div>
         </AlfaCard>
     </div>
