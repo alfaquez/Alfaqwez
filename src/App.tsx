@@ -424,16 +424,15 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      e.preventDefault();
-      goBack();
-      // Push state again to keep the listener active
-      window.history.pushState(null, '', window.location.href);
+      // Avoid popstate logic if it causes issues on mobile during initial load
+      if (screenHistory.length > 0) {
+        goBack();
+      }
     };
 
-    window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [screen, screenHistory]);
+  }, [screenHistory]);
 
   // Stateful Data
   const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
@@ -1846,8 +1845,8 @@ const AdminResults = () => {
   );
 
   return (
-    <div className="h-screen w-full flex flex-col select-none bg-alfa-bg text-alfa-text alfa-app-border overflow-hidden">
-       <main className="flex-1 overflow-y-auto w-full relative">
+    <div className="min-h-[100dvh] w-full flex flex-col select-none bg-alfa-bg text-alfa-text alfa-app-border">
+       <main className="flex-1 w-full relative">
            <AnimatePresence mode="wait">
             {screen === 'login' && <LoginScreen key="login" />}
             {screen === 'dashboard' && <DashboardScreen key="dashboard" />}
