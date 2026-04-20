@@ -297,19 +297,10 @@ export default function App() {
   }, [screen, screenHistory]);
 
   // Stateful Data
-  const [users, setUsers] = useState<UserData[]>([
-    { id: 'admin', name: 'Super Admin', employeeId: 'admin', password: 'admin', region: 'r1', totalScore: 99999, lastScore: 100, badges: ['Admin'], role: 'admin', examResults: [] },
-    { id: 'u1', name: 'Ahmed Ali', employeeId: '1234', password: '123', region: 'r1', totalScore: 12450, lastScore: 92, badges: ['Expert'], role: 'user', examResults: [] }
-  ]);
-  
-  const [exams, setExams] = useState<ExamMonth[]>([
-    { id: '1', name: { ar: 'يناير', en: 'January' }, status: 'active', score: 85, duration: 300, questions: ['q1', 'q2'], points: 100, type: 'monthly' },
-    { id: '2', name: { ar: 'فبراير', en: 'February' }, status: 'active', score: 92, duration: 300, questions: ['q1', 'q3'], points: 100, type: 'monthly' },
-    { id: '3', name: { ar: 'مارس', en: 'March' }, status: 'active', duration: 600, questions: ['q2', 'q3'], points: 100, type: 'monthly' },
-    { id: 'T1', name: { ar: 'تدريب المهارات الأساسية', en: 'Basic Skills Training' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'training', groupName: 'Group' },
-  ]);
-  
-  const [questions, setQuestions] = useState<Question[]>(MOCK_QUESTIONS);
+  const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [exams, setExams] = useState<ExamMonth[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   
   // Exam State
   const [activeExam, setActiveExam] = useState<ExamMonth | null>(null);
@@ -322,41 +313,63 @@ export default function App() {
   // Admin Editing State
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
-
+  
   // Fetch Data from Supabase
   useEffect(() => {
     async function fetchData() {
-      const { data: usersData } = await supabase.from('users').select('*');
-      if (usersData) setUsers(usersData as UserData[]);
+      setDbStatus({ status: 'syncing' });
+      try {
+        const { data: examsData, error: examsError } = await supabase.from('exams').select('*');
+        if (examsError) throw examsError;
 
-      const { data: examsData } = await supabase.from('exams').select('*');
-      if (examsData) setExams(examsData as ExamMonth[]);
+        if (examsData) {
+          const processedExams = examsData.map(e => ({
+            ...e,
+            id: String(e.id),
+            name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
+            status: e.status || 'active',
+            type: e.type || 'monthly',
+            duration: e.duration || 300,
+            points: e.points || 100,
+            questions: Array.isArray(e.questions) ? e.questions : []
+          }));
+          setExams(processedExams);
+          if (processedExams.length === 0) setDbStatus({ status: 'empty', details: 'No exams found in table "exams"' });
+          else setDbStatus({ status: 'connected', details: `${processedExams.length} Exams Loaded` });
+        }
 
-      const { data: questionsData } = await supabase.from('questions').select('*');
-      // تحويل أسماء الأعمدة لتتوافق مع التطبيق
-      const mappedQuestions = questionsData?.map(q => ({
-        ...q,
-        examId: q.examid,
-        text: q.text_ar, // أو text_en حسب اللغة
-        correctAnswer: q.correctanswer
-      }));
-      setQuestions(mappedQuestions || []);
-      if (questionsData) setQuestions(questionsData as Question[]);
+        const { data: questionsData } = await supabase.from('questions').select('*');
+        if (questionsData) {
+          const mappedQuestions = questionsData.map(q => ({
+            ...q,
+            id: String(q.id),
+            examid: String(q.examid || q.examId || ''),
+            text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
+            correctAnswer: String(q.correctAnswer || q.correctanswer || ''),
+            options: typeof q.options === 'object' ? q.options : { 
+                ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), 
+                en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean) 
+            },
+            points: Number(q.points || 10)
+          }));
+          setQuestions(mappedQuestions as Question[]);
+        }
+
+        const { data: usersData } = await supabase.from('users').select('*');
+        if (usersData) setUsers(usersData as UserData[]);
+
+      } catch (err: any) {
+        console.error("Fetch Error:", err);
+        setDbStatus({ status: 'error', details: err.message });
+      }
     }
     fetchData();
 
     // Setup Real-time subscriptions
     const channels = [
-      supabase.channel('users_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, payload => {
-        // Handle changes, e.g., refetch or update state
-        fetchData(); 
-      }).subscribe(),
-      supabase.channel('exams_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, payload => {
-         fetchData();
-      }).subscribe(),
-      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, payload => {
-        fetchData();
-      }).subscribe()
+      supabase.channel('users_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
+      supabase.channel('exams_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchData()).subscribe(),
+      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchData()).subscribe()
     ];
 
     return () => {
@@ -559,12 +572,16 @@ export default function App() {
               <AlfaLogo />
           </motion.div>
 
-          <motion.div 
-              initial={{ opacity: 0, y: 20 }} 
-              animate={{ opacity: 1, y: 0 }} 
-              transition={{ delay: 0.2 }}
-              className="w-full max-w-sm flex flex-col gap-2 relative z-10 mt-2 sm:mt-6"
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="w-full max-w-sm flex flex-col gap-2 relative z-10 mt-2 sm:mt-6">
+              {/* Database Status Indicator */}
+              <div className="flex items-center justify-center gap-2 mb-2">
+                  <div className={`w-2 h-2 rounded-full ${dbStatus.status === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus.status === 'error' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                      DB: {dbStatus.status === 'connected' ? 'CONNECTED' : dbStatus.status === 'syncing' ? 'SYNCING...' : dbStatus.status === 'empty' ? 'NO DATA' : 'DISCONNECTED'}
+                      {dbStatus.details && ` • ${dbStatus.details}`}
+                  </span>
+              </div>
+              
               {!loginMode ? (
                 <div className="flex flex-col gap-6 p-4 mt-4">
                    <button onClick={() => setLoginMode('admin')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
@@ -604,7 +621,7 @@ export default function App() {
   };
 
   const DashboardScreen = () => (
-    <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 overflow-hidden h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
             <div className="flex items-center gap-2 sm:gap-4 relative z-10">
                 <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-white/10 flex items-center justify-center text-white shadow-xl border border-cyan-400/50 shadow-[inset_0_0_5px_white]">
@@ -624,13 +641,6 @@ export default function App() {
                 </button>
             </div>
         </header>
-
-        {/* Sleek Bottom Bar */}
-        <div className="fixed bottom-0 left-0 right-0 h-14 bg-alfa-blue flex items-center justify-around z-[100] border-t border-alfa-neon-blue">
-          <button className="text-black font-black uppercase text-xs">Home</button>
-          <button className="text-black font-black uppercase text-xs">Exams</button>
-          <button className="text-black font-black uppercase text-xs">Profile</button>
-        </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
             <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
@@ -692,12 +702,14 @@ export default function App() {
   );
 
   const MonthsScreen = () => {
-    const months = exams.filter(m => (m.type || 'monthly') === 'monthly');
-    const trainings = exams.filter(m => m.type === 'training');
+    // تصفية الامتحانات بناءً على النوع
+    const monthlyExams = exams.filter(e => (e.type || 'monthly') === 'monthly');
+    const trainingExams = exams.filter(e => e.type === 'training');
+    const currentList = categoryTab === 'monthly' ? monthlyExams : trainingExams;
 
     return (
-        <div className="p-6 sm:p-12 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-12 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-            <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
+        <div className="p-6 sm:p-12 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-12 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+             <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue via-alfa-neon-blue/20 to-alfa-blue" />
                 <div className="flex items-center gap-4 relative z-10 w-full sm:w-auto">
                     <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all">
@@ -723,27 +735,35 @@ export default function App() {
             </header>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 flex-1 overflow-y-auto pb-6 px-1 overscroll-contain">
-                {(categoryTab === 'monthly' ? months : trainings).map(m => {
-                    const hasFinished = user?.examResults.some(r => r.examId === m.id);
-                    const isAllowedRetake = user?.allowedRetakes?.includes(m.id);
-                    const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
+                {currentList.length === 0 ? (
+                    <div className="col-span-full py-20 text-center opacity-40">
+                        <p className="font-black uppercase tracking-widest">{lang === 'ar' ? 'لا توجد اختبارات حالياً' : 'No Exams Available'}</p>
+                    </div>
+                ) : (
+                    currentList.map(m => {
+                        const hasFinished = user?.examResults?.some(r => r.examId === m.id);
+                        const isAllowedRetake = user?.allowedRetakes?.includes(m.id);
+                        const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
 
-                    return (
-                        <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <div className="flex justify-between items-start relative z-10">
-                                <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.groupName ? `${m.groupName} ${m.id}` : m.id}</span>
-                                {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl group-hover:bg-alfa-neon-blue/10 transition-colors shadow-inner"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue transition-colors" /></div>}
+                        return (
+                            <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex justify-between items-start relative z-10">
+                                    <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.id}</span>
+                                    {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl group-hover:bg-alfa-neon-blue/10 transition-colors shadow-inner"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue transition-colors" /></div>}
+                                </div>
+                                <div className="relative z-10">
+                                    <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">
+                                        {lang === 'ar' ? (m.name?.ar || m.name_ar) : (m.name?.en || m.name_en)}
+                                    </h3>
+                                    <p className={`text-[8px] sm:text-[11px] font-black uppercase tracking-[0.2em] mt-1 sm:mt-2 ${hasFinished ? 'text-emerald-500' : 'text-alfa-blue/40 font-logo'}`}>
+                                        {hasFinished ? (isAllowedRetake ? (lang === 'ar' ? 'متاح للإعادة' : 'Retake Available') : (lang === 'ar' ? 'تم الانتهاء' : 'Completed')) : (m.status === 'locked' ? 'Locked' : 'Available')}
+                                    </p>
+                                </div>
                             </div>
-                            <div className="relative z-10">
-                                <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">{lang === 'ar' ? m.name.ar : m.name.en}</h3>
-                                <p className={`text-[8px] sm:text-[11px] font-black uppercase tracking-[0.2em] mt-1 sm:mt-2 ${hasFinished ? 'text-emerald-500' : 'text-alfa-blue/40 font-logo'}`}>
-                                    {hasFinished ? (isAllowedRetake ? (lang === 'ar' ? 'متاح للإعادة' : 'Retake Available') : (lang === 'ar' ? 'تم الانتهاء' : 'Completed')) : (m.status === 'locked' ? 'Locked' : 'Available')}
-                                </p>
-                            </div>
-                        </div>
-                    );
-                })}
+                        );
+                    })
+                )}
             </div>
         </div>
     );
@@ -1370,7 +1390,7 @@ const AdminResults = () => {
 
     return (
         <div className="w-full z-[100] bg-white/95 backdrop-blur-3xl border-t-2 border-alfa-blue/10 shadow-[0_-20px_60px_rgba(0,40,85,0.1)] px-2 pb-safe shrink-0">
-            <div className="max-w-md mx-auto h-20 sm:h-24 flex items-center justify-around translate-y-[-2px]">
+            <div className="max-w-2xl mx-auto h-20 sm:h-24 flex items-center justify-around translate-y-[-2px]">
                 {items.map(item => {
                     const isActive = screen === item.id || (item.id === 'admin_dashboard' && screen === 'admin_dashboard') || (item.id === 'dashboard' && screen === 'dashboard');
                     return (
