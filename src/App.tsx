@@ -4,7 +4,7 @@ import confetti from 'canvas-confetti';
 import { 
   Lock, Shield, User, Key, BarChart3, Trophy, 
   ChevronRight, Timer, CheckCircle2, XCircle, 
-  ArrowLeft, AlertTriangle, List, Plus, Trash2,
+  ArrowLeft, AlertTriangle, List, Plus, Trash2, Edit2,
   Calendar, Award, Briefcase, Zap, Cpu, Settings,
   LogOut, Globe, ClipboardList, Info, Download, FileSpreadsheet,
   TrendingUp, Activity, Frown, PartyPopper, AlertCircle
@@ -1791,29 +1791,59 @@ const AdminResults = () => {
   };
 
   const AdminQuestions = () => {
-    const [isAddModal, setIsAddModal] = useState(false);
-    const [newQ, setNewQ] = useState<Partial<Question>>({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 5 });
-    const [mcOptions, setMcOptions] = useState(['', '', '']);
+  const [isAddModal, setIsAddModal] = useState(false);
+  const [editingQ, setEditingQ] = useState<Question | null>(null);
+  const [newQ, setNewQ] = useState<Partial<Question>>({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 5 });
+  const [mcOptions, setMcOptions] = useState(['', '', '']);
 
     const deleteQuestion = (id: string) => {
         setQuestions(questions.filter(q => q.id !== id));
     };
 
-    const addQuestion = () => {
+    const addQuestion = async () => {
         if (!newQ.text?.ar || !newQ.correctAnswer) return;
-        const q: Question = {
-            id: 'q' + (questions.length + 1),
-            text: newQ.text as any,
-            type: newQ.type as any,
-            correctAnswer: newQ.correctAnswer,
-            category: newQ.category as any,
-            points: newQ.points || 0,
-            options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined
-        };
-        setQuestions([...questions, q]);
+        
+        let savedQ: Question;
+        if (editingQ) {
+            // Update
+            savedQ = { ...editingQ, ...newQ, options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined } as Question;
+            setQuestions(questions.map(q => q.id === editingQ.id ? savedQ : q));
+             const { error } = await supabase.from('questions').update({
+                text: savedQ.text,
+                type: savedQ.type,
+                correctAnswer: savedQ.correctAnswer,
+                category: savedQ.category,
+                points: savedQ.points,
+                options: savedQ.options
+            }).eq('id', savedQ.id);
+            if (error) console.error("Error updating question:", error);
+        } else {
+            // New
+            savedQ = {
+                id: 'q' + Date.now(),
+                text: newQ.text as any,
+                type: newQ.type as any,
+                correctAnswer: newQ.correctAnswer,
+                category: newQ.category as any,
+                points: newQ.points || 0,
+                options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined
+            };
+            setQuestions([...questions, savedQ]);
+            const { error } = await supabase.from('questions').insert([savedQ]);
+            if (error) console.error("Error adding question:", error);
+        }
+        
         setIsAddModal(false);
+        setEditingQ(null);
         setNewQ({ type: 'mc', category: { ar: 'عام', en: 'General' } });
         setMcOptions(['', '', '']);
+    };
+    
+    const openEdit = (q: Question) => {
+        setEditingQ(q);
+        setNewQ(q);
+        setMcOptions(q.options?.ar || ['', '', '']);
+        setIsAddModal(true);
     };
 
     return (
@@ -1904,9 +1934,14 @@ const AdminResults = () => {
                                 <span className="text-[9px] font-black opacity-30 uppercase tracking-[0.2em]">{lang === 'ar' ? q?.category?.ar : q?.category?.en} • {q?.type}</span>
                                 <h3 className="text-lg font-black text-alfa-blue mt-0.5 leading-tight">{lang === 'ar' ? q?.text?.ar : q?.text?.en}</h3>
                              </div>
-                             <button className="p-3 rounded-xl bg-red-50 text-alfa-red hover:bg-red-100" onClick={() => deleteQuestion(q.id)}>
-                                <Trash2 className="w-4 h-4" />
-                             </button>
+                             <div className="flex gap-2">
+                                <button className="p-3 rounded-xl bg-alfa-blue/5 text-alfa-blue hover:bg-alfa-blue/10" onClick={() => openEdit(q)}>
+                                    <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button className="p-3 rounded-xl bg-red-50 text-alfa-red hover:bg-red-100" onClick={() => deleteQuestion(q.id)}>
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             {(lang === 'ar' ? q.options?.ar : q.options?.en || [text.true, text.false])?.map(opt => (
