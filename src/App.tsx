@@ -575,13 +575,13 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
-    const name = formData.get('name') as string;
-    const employeeIdCode = formData.get('employeeId') as string;
-    const password = formData.get('password') as string;
+    const name = (formData.get('name') as string || "").trim();
+    const employeeIdCode = (formData.get('employeeId') as string || "").trim();
+    const password = (formData.get('password') as string || "").trim();
     const regionId = formData.get('region') as string;
     
-    // Admin override
-    if (employeeIdCode === 'admin' && password === 'admin') {
+    // Admin override (Case-insensitive)
+    if (employeeIdCode.toLowerCase() === 'admin' && password === 'admin') {
       setUser({ id: 'admin', name: 'Admin', role: 'admin' } as UserData);
       setScreen('dashboard');
       return;
@@ -595,10 +595,15 @@ export default function App() {
         return;
       }
 
-      let foundUser = users.find(u => u.employeeId === employeeIdCode);
+      // Hardened search: Normalizes IDs to strings and trims them
+      const searchCode = String(employeeIdCode).trim();
+      let foundUser = users.find(u => {
+        const uCode = String(u.employeeId || u.employee_id || "").trim();
+        return uCode === searchCode;
+      });
       
       if (!foundUser) {
-        // Create a new user dynamically in Supabase too
+        // Create a new user dynamically
         const newUser: UserData = {
           id: 'u' + Date.now(),
           name: name,
@@ -624,6 +629,7 @@ export default function App() {
         setUsers(prev => [...prev, newUser]);
         setUser(newUser);
       } else {
+        // Logged in with existing user - results are already in state from fetchData
         setUser(foundUser);
       }
       
@@ -971,12 +977,29 @@ export default function App() {
                     </div>
                 ) : (
                     currentList.map(m => {
-                        const hasFinished = (user?.examResults || []).some(r => r.examId === m.id);
-                        const isAllowedRetake = (user?.allowedRetakes || []).includes(m.id);
+                        const hasFinished = (user?.examResults || []).some(r => String(r.examId) === String(m.id));
+                        const isAllowedRetake = (user?.allowedRetakes || []).some(id => String(id) === String(m.id));
                         const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
 
                         return (
-                            <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
+                            <div 
+                                key={m.id} 
+                                onClick={() => !isDisabled && handleStartExam(m)} 
+                                className={`group relative p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-60 cursor-not-allowed overflow-hidden' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}
+                            >
+                                {/* Blur Overlay for finished/locked exams */}
+                                {isDisabled && (
+                                    <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px] z-20 flex items-center justify-center pointer-events-none">
+                                        <div className="bg-white/80 p-3 rounded-full shadow-xl">
+                                            {m.status === 'locked' ? (
+                                                <Lock className="w-6 h-6 text-alfa-blue" />
+                                            ) : (
+                                                <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 <div className="flex justify-between items-start relative z-10">
                                     <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.id}</span>
