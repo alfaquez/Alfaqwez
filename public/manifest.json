@@ -1,0 +1,22 @@
+{
+  "name": "Alfa Examination System",
+  "short_name": "Alfa Exam",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000a1f",
+  "theme_color": "#0070f3",
+  "description": "Smart Examination System for Alfa Labs Employees",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/alfa/192/192",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://picsum.photos/seed/alfa/512/512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import {
 import { AlfaButton } from './components/AlfaButton';
 import { AlfaInput } from './components/AlfaInput';
 import { AlfaCard } from './components/AlfaCard';
+import { AlfaLogo } from './components/AlfaLogo';
 import { supabase } from './lib/supabaseClient';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -220,558 +221,36 @@ const MOCK_PROGRESS = [
 
 // --- Sub-Components ---
 
-const AlfaLogo = () => (
-  <div className="flex flex-col items-center scale-[0.85] sm:scale-100 py-0 -mt-2 sm:-mt-6">
-    <div className="relative w-28 h-28 sm:w-36 sm:h-36 mb-1 sm:mb-6">
-      <div className="absolute inset-0 flex items-center justify-center group cursor-pointer transition-transform duration-500 hover:scale-110">
-         <motion.div 
-            animate={{ 
-              opacity: [0.9, 1, 0.9],
-              scale: [1, 1.05, 1],
-            }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            className="w-full h-full flex items-center justify-center relative" 
-         >
-            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] bg-white flex items-center justify-center shadow-[0_15px_60px_rgba(0,112,243,0.25)] border border-alfa-neon-blue/20 relative overflow-hidden">
-               <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
-            </div>
-         </motion.div>
-      </div>
-    </div>
-    <div className="text-center">
-      <div className="inline-block px-8 py-3 sm:px-12 sm:py-5 rounded-full border border-alfa-neon-blue/10 bg-white/40 shadow-[0_10px_35px_rgba(0,112,243,0.12)] backdrop-blur-3xl relative overflow-hidden group">
-        <h1 className="text-alfa-blue text-3xl sm:text-6xl font-black tracking-tighter font-logo relative z-10 transition-all duration-700 drop-shadow-[0_6px_10px_rgba(0,112,243,0.2)] uppercase">
-           Alfa <span className="text-alfa-neon-blue alfa-text-neon">Quez</span>
-        </h1>
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-      </div>
-      <div className="mt-5 flex flex-col gap-2">
-        <div className="inline-block px-5 py-1.5 rounded-full border border-alfa-neon-blue/10 bg-white/30 backdrop-blur-md shadow-sm">
-          <p className="text-[10px] sm:text-[13px] font-black text-alfa-blue uppercase tracking-tight font-logo">
-            Design by : <span className="text-alfa-neon-blue alfa-text-neon">islam alsapaa</span>
-          </p>
-        </div>
-        <div className="inline-block px-5 py-1.5 rounded-full border border-alfa-neon-blue/10 bg-white/30 backdrop-blur-md shadow-sm">
-          <p className="text-[10px] sm:text-[13px] font-black text-alfa-blue uppercase tracking-tight font-logo">
-            Content developed by : <span className="text-alfa-neon-blue alfa-text-neon">training team</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-);
+// --- Top-Level Components to prevent re-mounting flicker ---
+const ExamScreen = ({ 
+  activeExam, 
+  questions, 
+  examStep, 
+  setExamStep, 
+  answers, 
+  setAnswers, 
+  completeExam, 
+  lang, 
+  isRtl, 
+  text, 
+  getExamQuestions,
+  setScreen
+}: any) => {
+    const [timer, setTimer] = React.useState(activeExam?.duration || 300);
+    const [isTimeUp, setIsTimeUp] = React.useState(false);
 
-export default function App() {
-  const [screen, setScreenState] = useState<Screen>('login');
-  const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
-  const [lang, setLang] = useState<Lang>('ar');
-  const [user, setUser] = useState<UserData | null>(null);
-
-  const setScreen = (newScreen: Screen, pushHistory: boolean = true) => {
-    if (pushHistory) {
-      setScreenHistory(prev => [...prev, screen]);
-    }
-    setScreenState(newScreen);
-  };
-
-  const goBack = () => {
-    if (screen === 'exam') return; // Don't allow back during exam
-    if (screenHistory.length > 0) {
-      const prevScreen = screenHistory[screenHistory.length - 1];
-      setScreenHistory(prev => prev.slice(0, -1));
-      setScreenState(prevScreen);
-    }
-  };
-
-  useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      e.preventDefault();
-      goBack();
-      // Push state again to keep the listener active
-      window.history.pushState(null, '', window.location.href);
-    };
-
-    window.history.pushState(null, '', window.location.href);
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [screen, screenHistory]);
-
-  // Stateful Data
-  const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [exams, setExams] = useState<ExamMonth[]>([]);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  
-  // Exam State
-  const [activeExam, setActiveExam] = useState<ExamMonth | null>(null);
-  const [examStep, setExamStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [timer, setTimer] = useState(300);
-  const [isTimeUp, setIsTimeUp] = useState(false);
-  const [categoryTab, setCategoryTab] = useState<'monthly' | 'training'>('monthly');
-  
-  // Admin Editing State
-  const [editingUser, setEditingUser] = useState<UserData | null>(null);
-  const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
-  
-  // Fetch Data from Supabase
-  useEffect(() => {
-    async function fetchData() {
-      setDbStatus({ status: 'syncing' });
-      try {
-        const { data: examsData, error: examsError } = await supabase.from('exams').select('*');
-        if (examsError) throw examsError;
-
-        if (examsData) {
-          const processedExams = examsData.map(e => ({
-            ...e,
-            id: String(e.id),
-            name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
-            status: e.status || 'active',
-            type: e.type || 'monthly',
-            duration: e.duration || 300,
-            points: e.points || 100,
-            questions: Array.isArray(e.questions) ? e.questions : []
-          }));
-          setExams(processedExams);
-          if (processedExams.length === 0) setDbStatus({ status: 'empty', details: 'No exams found in table "exams"' });
-          else setDbStatus({ status: 'connected', details: `${processedExams.length} Exams Loaded` });
+    React.useEffect(() => {
+        let interval: any;
+        if (timer > 0 && !isTimeUp) {
+            interval = setInterval(() => setTimer((t: number) => t - 1), 1000);
+        } else if (timer === 0 && !isTimeUp) {
+            setIsTimeUp(true);
         }
+        return () => clearInterval(interval);
+    }, [timer, isTimeUp]);
 
-        const { data: questionsData } = await supabase.from('questions').select('*');
-        if (questionsData) {
-          const mappedQuestions = questionsData.map(q => ({
-            ...q,
-            id: String(q.id),
-            examid: String(q.examid || q.examId || ''),
-            text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
-            correctAnswer: String(q.correctAnswer || q.correctanswer || ''),
-            options: typeof q.options === 'object' ? q.options : { 
-                ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), 
-                en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean) 
-            },
-            points: Number(q.points || 10)
-          }));
-          setQuestions(mappedQuestions as Question[]);
-        }
-
-        const { data: usersData } = await supabase.from('users').select('*');
-        if (usersData) setUsers(usersData as UserData[]);
-
-      } catch (err: any) {
-        console.error("Fetch Error:", err);
-        setDbStatus({ status: 'error', details: err.message });
-      }
-    }
-    fetchData();
-
-    // Setup Real-time subscriptions
-    const channels = [
-      supabase.channel('users_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
-      supabase.channel('exams_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchData()).subscribe(),
-      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchData()).subscribe()
-    ];
-
-    return () => {
-      channels.forEach(channel => supabase.removeChannel(channel));
-    };
-  }, []);
-
-  const text = translations[lang];
-  const isRtl = lang === 'ar';
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const formData = new FormData(e.target as HTMLFormElement);
-    const name = formData.get('name') as string;
-    const employeeId = formData.get('employeeId') as string;
-    const password = formData.get('password') as string;
-    const regionId = formData.get('region') as string;
-    
-    // Admin override
-    if (employeeId === 'admin' && password === 'admin') {
-      setUser({ id: 'admin', name: 'Admin', role: 'admin' } as UserData);
-      setScreen('dashboard');
-      return;
-    }
-
-    const region = MOCK_REGIONS.find(r => r.id === regionId);
-    
-    if (region && password === region.password) {
-      if (!name || !employeeId) {
-        alert(lang === 'ar' ? 'برجاء ادخال الاسم والكود' : 'Please enter Name and Code');
-        return;
-      }
-
-      let foundUser = users.find(u => u.employeeId === employeeId);
-      
-      if (!foundUser) {
-        // Create a new user dynamically if they don't exist
-        const newUser: UserData = {
-          id: 'u' + Date.now(),
-          name: name,
-          employeeId: employeeId,
-          region: regionId,
-          totalScore: 0,
-          lastScore: 0,
-          badges: [],
-          role: 'user',
-          examResults: []
-        };
-        setUsers(prev => [...prev, newUser]);
-        setUser(newUser);
-      } else {
-        // Update name if it changed? Or just log in as the existing user
-        setUser(foundUser);
-      }
-      
-      setScreen('dashboard');
-    } else {
-      alert(lang === 'ar' ? 'فشل تسجيل الدخول: بيانات المنطقه او الباسورد غير صحيحه' : 'Login Failed: Invalid Region password or Region selection');
-    }
-  };
-
-  const handleStartExam = (exam: ExamMonth) => {
-    // Check if user already finished this exam
-    const hasFinished = user?.examResults.some(r => r.examId === exam.id);
-    const isAllowedRetake = user?.allowedRetakes?.includes(exam.id);
-
-    if (hasFinished && !isAllowedRetake && user?.role !== 'admin') {
-        alert(text.retakeNotAllowed);
-        return;
-    }
-
-    // تصفية الأسئلة باستخدام examid (الاسم الصحيح في القاعدة)
-    const examQs = questions.filter(q => q.examid === exam.id);
-    
-    if (examQs.length === 0) {
-        alert("لا توجد أسئلة لهذا الاختبار.");
-        return;
-    }
-
-    setActiveExam(exam);
-    setExamStep(0);
-    setAnswers({});
-    setTimer(exam.duration);
-    setIsTimeUp(false);
-    setScreen('exam');
-  };
-
-  const toggleRetake = (userId: string, examId: string) => {
-    setUsers(users.map(u => {
-        if (u.id === userId) {
-            const retakes = u.allowedRetakes || [];
-            if (retakes.includes(examId)) {
-                return { ...u, allowedRetakes: retakes.filter(id => id !== examId) };
-            } else {
-                return { ...u, allowedRetakes: [...retakes, examId] };
-            }
-        }
-        return u;
-    }));
-  };
-
-  const calculateScore = () => {
-    if (!activeExam) return 0;
-    let earnedPoints = 0;
-    let totalPossiblePoints = 0;
-    const examQs = questions.filter(q => activeExam.questions.includes(q.id));
-    examQs.forEach(q => {
-      totalPossiblePoints += (q.points || 0);
-      if (answers[q.id] === q.correctAnswer) {
-        earnedPoints += (q.points || 0);
-      }
-    });
-    if (totalPossiblePoints === 0) return 0;
-    return Math.round((earnedPoints / totalPossiblePoints) * 100);
-  };
-
-  const completeExam = async () => {
-    if (!activeExam || !user) return;
-    const { score, earned, total } = calculateResultData();
-    
-     // Save to Supabase
-    const { error } = await supabase
-        .from('results')
-        .insert({
-            userId: user.id,
-            examid: activeExam.id, // استخدام examid وليس examId
-            score: score,
-            rawScore: earned,
-            maxScore: total
-        });
-
-    if (error) {
-        console.error("Error saving result:", error);
-        alert("Failed to save result. Please try again.");
-        return;
-    }
-
-    // Update user score in Supabase
-    const newTotalScore = (user.totalScore || 0) + score;
-    await supabase
-        .from('users')
-        .update({ totalScore: newTotalScore, lastScore: score })
-        .eq('id', user.id);
-
-    setScreen('result');
-  };
-
-  const calculateResultData = () => {
-    if (!activeExam) return { score: 0, earned: 0, total: 0 };
-    const examQs = questions.filter(q => activeExam.questions.includes(q.id));
-    let earnedPoints = 0;
-    let totalPossiblePoints = 0;
-
-    examQs.forEach(q => {
-      totalPossiblePoints += q.points;
-      if (answers[q.id] === q.correctAnswer) {
-        earnedPoints += q.points;
-      }
-    });
-
-    const score = totalPossiblePoints === 0 ? 0 : Math.round((earnedPoints / totalPossiblePoints) * 100);
-    return { score, earned: earnedPoints, total: totalPossiblePoints };
-  };
-
-  useEffect(() => {
-    let interval: any;
-    if (screen === 'exam' && timer > 0 && !isTimeUp) {
-      interval = setInterval(() => setTimer(t => t - 1), 1000);
-    } else if (timer === 0 && screen === 'exam' && !isTimeUp) {
-      setIsTimeUp(true);
-    }
-    return () => clearInterval(interval);
-  }, [screen, timer, isTimeUp]);
-
-  // --- UI Screens ---
-
-  const LoginScreen = () => {
-    const [loginMode, setLoginMode] = useState<'user' | 'admin' | null>(null);
-    const [selectedRegion, setSelectedRegion] = useState(MOCK_REGIONS[0].id);
-
-    return (
-      <div className="min-h-full max-h-screen flex flex-col items-center justify-center p-6 sm:p-12 relative overflow-hidden bg-transparent font-alfa overscroll-none">
-          {/* Extreme Blue Ambient Neon Glows */}
-          <div className="absolute top-[-15%] left-[-15%] w-[60%] h-[60%] alfa-ambient-blue blur-[120px] rounded-full opacity-40" />
-          <div className="absolute bottom-[-15%] right-[-15%] w-[60%] h-[60%] alfa-ambient-blue blur-[120px] rounded-full opacity-40" />
-
-          {/* Lang Toggle at Top Right */}
-          <div className={`absolute top-6 ${isRtl ? 'left-6' : 'right-6'} z-[100]`}>
-              <motion.button 
-                whileHover={{ scale: 1.1, rotate: 10 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} 
-                className="w-10 h-10 rounded-xl bg-white/40 border border-alfa-neon-blue/30 flex items-center justify-center text-alfa-neon-blue shadow-lg backdrop-blur-3xl"
-              >
-                  <Globe className="w-5 h-5" />
-              </motion.button>
-          </div>
-
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mb-0 sm:mb-4 relative z-10 transition-all duration-700">
-              <AlfaLogo />
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="w-full max-w-sm flex flex-col gap-2 relative z-10 mt-2 sm:mt-6">
-              {/* Database Status Indicator */}
-              <div className="flex items-center justify-center gap-2 mb-2">
-                  <div className={`w-2 h-2 rounded-full ${dbStatus.status === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus.status === 'error' ? 'bg-red-500' : 'bg-amber-500'}`} />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
-                      DB: {dbStatus.status === 'connected' ? 'CONNECTED' : dbStatus.status === 'syncing' ? 'SYNCING...' : dbStatus.status === 'empty' ? 'NO DATA' : 'DISCONNECTED'}
-                      {dbStatus.details && ` • ${dbStatus.details}`}
-                  </span>
-              </div>
-              
-              {!loginMode ? (
-                <div className="flex flex-col gap-6 p-4 mt-4">
-                   <button onClick={() => setLoginMode('admin')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s] ease-in-out" />
-                      <Shield className="w-7 h-7 text-alfa-neon-blue drop-shadow-[0_0_8px_rgba(0,112,243,0.8)]" /> 
-                      <span className="text-white font-black text-lg tracking-widest alfa-text-neon uppercase font-logo">Administrator</span>
-                   </button>
-                   <button onClick={() => setLoginMode('user')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s] ease-in-out" />
-                      <User className="w-7 h-7 text-alfa-neon-blue drop-shadow-[0_0_8px_rgba(0,112,243,0.8)]" /> 
-                      <span className="text-white font-black text-lg tracking-widest alfa-text-neon uppercase font-logo">Employee User</span>
-                   </button>
-                </div>
-              ) : (
-                <form onSubmit={handleLogin} className="flex flex-col gap-2 p-2 relative">
-                  <button type="button" onClick={() => setLoginMode(null)} className="mb-2 text-white/50 text-[10px] font-black uppercase underline">Back</button>
-                  {loginMode === 'user' && (
-                    <>
-                      <AlfaInput label={text.empName} name="name" neon className="h-12" icon={<User className="w-5 h-5"/>} />
-                      <AlfaInput label={text.empCode} name="employeeId" neon className="h-12" icon={<ClipboardList className="w-5 h-5"/>} />
-                      <select name="region" value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="w-full h-12 rounded-[1rem] bg-white/10 border border-white/20 px-4 text-white">
-                          {MOCK_REGIONS.map(r => <option key={r.id} value={r.id} className="text-black font-bold">{lang === 'ar' ? r.name.ar : r.name.en}</option>)}
-                      </select>
-                    </>
-                  )}
-                  <AlfaInput label={text.password} name="password" neon className="h-12" placeholder={text.passwordPlaceholder} type="password" icon={<Lock className="w-5 h-5"/>} />
-                  {/* Hidden input for employeeId if in admin mode */}
-                  {loginMode === 'admin' && <input type="hidden" name="employeeId" value="admin" />}
-                  <AlfaButton type="submit" className="w-full mt-2 h-14 text-xl shadow-xl alfa-neon-blue">
-                      {text.login}
-                  </AlfaButton>
-                </form>
-              )}
-          </motion.div>
-      </div>
-    );
-  };
-
-  const DashboardScreen = () => (
-    <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-        <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
-            <div className="flex items-center gap-2 sm:gap-4 relative z-10">
-                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-white/10 flex items-center justify-center text-white shadow-xl border border-cyan-400/50 shadow-[inset_0_0_5px_white]">
-                    <User className="w-5 h-5 sm:w-7 sm:h-7 text-cyan-400" />
-                </div>
-                <div>
-                   <h2 className="text-[8px] sm:text-[10px] text-white/50 font-black uppercase tracking-[0.3em] font-logo mb-0">👋 {text.welcome}</h2>
-                   <h1 className="text-sm sm:text-xl font-black tracking-tight leading-tight text-white">{user?.name}</h1>
-                </div>
-            </div>
-            <div className="flex gap-2 sm:gap-3 relative z-10">
-                <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="w-9 h-9 sm:w-12 sm:h-12 bg-white/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
-                    <Globe className="w-4 h-4 sm:w-6 h-6 text-cyan-400" />
-                </button>
-                <button onClick={() => setScreen('login')} className="w-9 h-9 sm:w-12 sm:h-12 bg-alfa-red/80 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
-                    <LogOut className="w-4 h-4 sm:w-6 h-6 text-white" />
-                </button>
-            </div>
-        </header>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
-            <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
-            <AlfaCard title={`⭐ ${user?.totalScore?.toLocaleString() ?? '0'}`} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
-            <AlfaCard title="🎖️ Elite" subtitle="RANK" className="hidden lg:block border-l-4 border-l-amber-500 !p-4 sm:!p-6" />
-            <AlfaCard title="💎 7" subtitle="BADGES" className="hidden lg:block border-l-4 border-l-purple-500 !p-4 sm:!p-6" />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-6 flex-1 min-h-0">
-            <AlfaCard title={text.insights} className="lg:col-span-2 flex flex-col h-full bg-alfa-blue/[0.02]">
-                <div className="flex-1 w-full min-h-[80px] sm:min-h-0">
-                   <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={MOCK_PROGRESS}>
-                        <defs>
-                          <linearGradient id="colorAlfa" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#0070f3" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#0070f3" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" hide />
-                        <YAxis hide />
-                        <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
-                        <Area type="monotone" dataKey="score" stroke="#0070f3" strokeWidth={4} fill="url(#colorAlfa)" animationDuration={2000} />
-                      </AreaChart>
-                   </ResponsiveContainer>
-                </div>
-                <div className="mt-2 p-2 sm:p-4 bg-alfa-neon-blue/5 rounded-xl border border-alfa-neon-blue/10 backdrop-blur-sm">
-                    <p className="text-[9px] sm:text-sm italic font-black text-alfa-blue opacity-70 leading-relaxed font-logo">
-                        {lang === 'ar' ? "أداءك في تحاليل المختبر تطور بشكل ملحوظ. استمر في التميز." : "Lab analytics performance is peaking. Maintain excellence."}
-                    </p>
-                </div>
-            </AlfaCard>
-
-            <AlfaCard title={text.leaderboard} className="flex flex-col h-full">
-                <div className="flex flex-col gap-2 flex-1 overflow-hidden h-full">
-                    {users.filter(u => u.role === 'user').sort((a,b) => b.totalScore - a.totalScore).slice(0, 3).map((p, i) => (
-                        <div key={i} className="flex justify-between items-center p-2 sm:p-4 rounded-xl sm:rounded-2xl bg-white/50 border border-alfa-neon-blue/5 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 sm:gap-4">
-                                <div className={`w-6 h-6 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-[9px] sm:text-xs font-black shadow-inner ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue'}`}>
-                                    {i + 1}
-                                </div>
-                                <span className="font-black text-sm sm:text-xl text-alfa-blue tracking-tight">{p.name.split(' ')[0]}</span>
-                            </div>
-                            <span className="font-black text-xs sm:text-lg text-alfa-neon-blue font-logo">{p.totalScore}</span>
-                        </div>
-                    ))}
-                </div>
-            </AlfaCard>
-        </div>
-
-        <div className="shrink-0 pt-2 sm:pt-4">
-            <button onClick={() => setScreen('months')} className="w-full h-14 sm:h-20 bg-alfa-blue text-white rounded-[2rem] sm:rounded-[3rem] font-logo flex items-center justify-center gap-3 sm:gap-4 shadow-[0_15px_30px_rgba(0,40,85,0.2)] hover:shadow-alfa-neon-blue/20 transition-all active:scale-[0.98] group overflow-hidden relative">
-               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-               <Zap className="w-5 h-5 sm:w-7 sm:h-7 text-alfa-neon-blue group-hover:scale-125 transition-transform" />
-               <span className="text-sm sm:text-xl uppercase tracking-[0.2em]">{text.startExam}</span>
-            </button>
-        </div>
-    </div>
-  );
-
-  const MonthsScreen = () => {
-    // تصفية الامتحانات بناءً على النوع
-    const monthlyExams = exams.filter(e => (e.type || 'monthly') === 'monthly');
-    const trainingExams = exams.filter(e => e.type === 'training');
-    const currentList = categoryTab === 'monthly' ? monthlyExams : trainingExams;
-
-    return (
-        <div className="p-6 sm:p-12 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-12 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-             <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue via-alfa-neon-blue/20 to-alfa-blue" />
-                <div className="flex items-center gap-4 relative z-10 w-full sm:w-auto">
-                    <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all">
-                        <ArrowLeft className={`w-5 h-5 sm:w-8 sm:h-8 ${isRtl ? 'rotate-180' : ''}`} />
-                    </button>
-                    <h1 className="text-xl sm:text-3xl font-black text-white tracking-tighter uppercase font-logo">📅 {text.months}</h1>
-                </div>
-                
-                <div className="flex bg-white/10 rounded-2xl p-1.5 border border-white/20 relative z-10 w-full sm:w-auto">
-                    <button 
-                        onClick={() => setCategoryTab('monthly')}
-                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'monthly' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}
-                    >
-                        {text.monthlyExams}
-                    </button>
-                    <button 
-                        onClick={() => setCategoryTab('training')}
-                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'training' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}
-                    >
-                        {text.training}
-                    </button>
-                </div>
-            </header>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 flex-1 overflow-y-auto pb-6 px-1 overscroll-contain">
-                {currentList.length === 0 ? (
-                    <div className="col-span-full py-20 text-center opacity-40">
-                        <p className="font-black uppercase tracking-widest">{lang === 'ar' ? 'لا توجد اختبارات حالياً' : 'No Exams Available'}</p>
-                    </div>
-                ) : (
-                    currentList.map(m => {
-                        const hasFinished = user?.examResults?.some(r => r.examId === m.id);
-                        const isAllowedRetake = user?.allowedRetakes?.includes(m.id);
-                        const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
-
-                        return (
-                            <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <div className="flex justify-between items-start relative z-10">
-                                    <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.id}</span>
-                                    {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl group-hover:bg-alfa-neon-blue/10 transition-colors shadow-inner"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue transition-colors" /></div>}
-                                </div>
-                                <div className="relative z-10">
-                                    <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">
-                                        {lang === 'ar' ? (m.name?.ar || m.name_ar) : (m.name?.en || m.name_en)}
-                                    </h3>
-                                    <p className={`text-[8px] sm:text-[11px] font-black uppercase tracking-[0.2em] mt-1 sm:mt-2 ${hasFinished ? 'text-emerald-500' : 'text-alfa-blue/40 font-logo'}`}>
-                                        {hasFinished ? (isAllowedRetake ? (lang === 'ar' ? 'متاح للإعادة' : 'Retake Available') : (lang === 'ar' ? 'تم الانتهاء' : 'Completed')) : (m.status === 'locked' ? 'Locked' : 'Available')}
-                                    </p>
-                                </div>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
-        </div>
-    );
-  };
-
-  const ExamScreen = () => {
     if (!activeExam) return null;
-    const examQs = questions.filter(q => activeExam.questions.includes(q.id));
+    const examQs = getExamQuestions(activeExam);
     const q = examQs[examStep];
     if (!q) return (
       <div className="h-full flex items-center justify-center p-6 sm:p-12 text-center bg-transparent" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -873,7 +352,605 @@ export default function App() {
     );
   };
 
-  const ResultScreen = () => {
+export default function App() {
+  const [screen, setScreenState] = useState<Screen>('login');
+  const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
+  const [lang, setLang] = useState<Lang>('ar');
+  const [user, setUser] = useState<UserData | null>(null);
+
+  const setScreen = (newScreen: Screen, pushHistory: boolean = true) => {
+    if (pushHistory) {
+      setScreenHistory(prev => [...prev, screen]);
+    }
+    setScreenState(newScreen);
+  };
+
+  const goBack = () => {
+    if (screen === 'exam') return; // Don't allow back during exam
+    if (screenHistory.length > 0) {
+      const prevScreen = screenHistory[screenHistory.length - 1];
+      setScreenHistory(prev => prev.slice(0, -1));
+      setScreenState(prevScreen);
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      goBack();
+      // Push state again to keep the listener active
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [screen, screenHistory]);
+
+  // Stateful Data
+  const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
+  const [users, setUsers] = useState<UserData[]>([
+    { id: 'admin', name: 'Super Admin', employeeId: 'admin', password: 'admin', region: 'r1', totalScore: 99999, lastScore: 100, badges: ['Admin'], role: 'admin', examResults: [] },
+    { id: 'u1', name: 'User 1', employeeId: '1234', password: '1101', region: 'r1', totalScore: 0, lastScore: 0, badges: [], role: 'user', examResults: [] }
+  ]);
+  const [exams, setExams] = useState<ExamMonth[]>(MOCK_MONTHS);
+  const [questions, setQuestions] = useState<Question[]>(MOCK_QUESTIONS);
+  
+  // Exam State
+  const [activeExam, setActiveExam] = useState<ExamMonth | null>(null);
+  const [examStep, setExamStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [categoryTab, setCategoryTab] = useState<'monthly' | 'training'>('monthly');
+  
+  // Admin Editing State
+  const [editingUser, setEditingUser] = useState<UserData | null>(null);
+  const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
+  
+  // Login State
+  const [selectedRegion, setSelectedRegion] = useState(MOCK_REGIONS[0].id);
+
+  // Month Selection State
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+
+  const monthsNames = [
+    { ar: 'يناير', en: 'January' }, { ar: 'فبراير', en: 'February' }, { ar: 'مارس', en: 'March' },
+    { ar: 'أبريل', en: 'April' }, { ar: 'مايو', en: 'May' }, { ar: 'يونيو', en: 'June' },
+    { ar: 'يوليو', en: 'July' }, { ar: 'أغسطس', en: 'August' }, { ar: 'سبتمبر', en: 'September' },
+    { ar: 'أكتوبر', en: 'October' }, { ar: 'نوفمبر', en: 'November' }, { ar: 'ديسمبر', en: 'December' }
+  ];
+
+  const filteredExams = user?.role === 'admin' ? exams : exams.filter(e => e.status === 'active');
+  const currentMonthExams = selectedMonth !== null 
+    ? filteredExams.filter(e => e.type === 'monthly' && e.name[lang as 'ar'|'en'].includes(monthsNames[selectedMonth][lang as 'ar'|'en']))
+    : [];
+
+  const isRtl = lang === 'ar';
+  const text = translations[lang];
+
+  // Fetch Data from Supabase
+  useEffect(() => {
+    async function fetchData() {
+      setDbStatus({ status: 'syncing' });
+      try {
+        const tableNames = ['exams', 'exam', 'EXAMS'];
+        let examsRaw: any[] = [];
+        let errorToThrow = null;
+        let successfulTable = 'exams';
+
+        for (const tName of tableNames) {
+           const { data, error } = await supabase.from(tName).select('*');
+           if (!error && data && data.length > 0) {
+              examsRaw = data;
+              successfulTable = tName;
+              break;
+           }
+           if (error) errorToThrow = error;
+        }
+
+        if (examsRaw.length === 0 && errorToThrow) throw errorToThrow;
+
+        if (examsRaw && examsRaw.length > 0) {
+          const processedExams = examsRaw.map(e => ({
+            ...e,
+            id: String(e.id),
+            name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
+            status: e.status || 'active',
+            type: e.type || 'monthly',
+            duration: e.duration || 300,
+            points: e.points || 100,
+            questions: Array.isArray(e.questions) ? e.questions : [],
+            groupName: e.group_name || e.groupName || ''
+          }));
+          setExams(processedExams);
+          setDbStatus({ status: 'connected', details: `${processedExams.length} Exams from "${successfulTable}"` });
+        } else {
+          setDbStatus({ status: 'empty', details: `Synced with "${successfulTable}", but 0 rows returned. Using Offline Data.` });
+        }
+
+        const { data: questionsData, error: qError } = await supabase.from('questions').select('*');
+        if (qError) console.error("Questions Error:", qError);
+        if (questionsData && questionsData.length > 0) {
+          const mappedQuestions = questionsData.map(q => ({
+            ...q,
+            id: String(q.id),
+            examid: String(q.exam_id || q.examid || q.examId || ''),
+            text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
+            correctAnswer: String(q.correct_answer || q.correctAnswer || q.correctanswer || ''),
+            options: typeof q.options === 'object' ? q.options : { 
+                ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), 
+                en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean) 
+            },
+            points: Number(q.points || 10)
+          }));
+          setQuestions(mappedQuestions as Question[]);
+        }
+
+        const { data: usersData } = await supabase.from('users').select('*');
+        if (usersData && usersData.length > 0) {
+          const mappedUsers = usersData.map(u => ({
+            ...u,
+            employeeId: u.employee_id || u.employeeId,
+            totalScore: Number(u.total_score || u.totalScore || 0),
+            lastScore: Number(u.last_score || u.lastScore || 0),
+            examResults: Array.isArray(u.exam_results || u.examResults) ? (u.exam_results || u.examResults) : [],
+            allowedRetakes: Array.isArray(u.allowed_retakes || u.allowedRetakes) ? (u.allowed_retakes || u.allowedRetakes) : []
+          }));
+          setUsers(mappedUsers as UserData[]);
+        }
+
+      } catch (err: any) {
+        console.error("Fetch Error:", err);
+        setDbStatus({ status: 'error', details: err.message });
+      }
+    }
+    fetchData();
+
+    // Setup Real-time subscriptions
+    const channels = [
+      supabase.channel('users_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
+      supabase.channel('exams_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchData()).subscribe(),
+      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchData()).subscribe()
+    ];
+
+    return () => {
+      channels.forEach(channel => supabase.removeChannel(channel));
+    };
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const name = formData.get('name') as string;
+    const employeeIdCode = formData.get('employeeId') as string;
+    const password = formData.get('password') as string;
+    const regionId = formData.get('region') as string;
+    
+    // Admin override
+    if (employeeIdCode === 'admin' && password === 'admin') {
+      setUser({ id: 'admin', name: 'Admin', role: 'admin' } as UserData);
+      setScreen('dashboard');
+      return;
+    }
+
+    const region = MOCK_REGIONS.find(r => r.id === regionId);
+    
+    if (region && password === region.password) {
+      if (!name || !employeeIdCode) {
+        alert(lang === 'ar' ? 'برجاء ادخال الاسم والكود' : 'Please enter Name and Code');
+        return;
+      }
+
+      let foundUser = users.find(u => u.employeeId === employeeIdCode);
+      
+      if (!foundUser) {
+        // Create a new user dynamically in Supabase too
+        const newUser: UserData = {
+          id: 'u' + Date.now(),
+          name: name,
+          employeeId: employeeIdCode,
+          region: regionId,
+          totalScore: 0,
+          lastScore: 0,
+          badges: [],
+          role: 'user',
+          examResults: []
+        };
+
+        const { error } = await supabase.from('users').insert([{
+            id: newUser.id,
+            name: newUser.name,
+            employee_id: newUser.employeeId,
+            region: newUser.region,
+            role: 'user'
+        }]);
+
+        if (error) console.error("Create User Error:", error);
+
+        setUsers(prev => [...prev, newUser]);
+        setUser(newUser);
+      } else {
+        setUser(foundUser);
+      }
+      
+      setScreen('dashboard');
+    } else {
+      alert(lang === 'ar' ? 'فشل تسجيل الدخول: بيانات المنطقه او الباسورد غير صحيحه' : 'Login Failed: Invalid Region password or Region selection');
+    }
+  };
+
+  const getExamQuestions = (exam: ExamMonth | null) => {
+    if (!exam) return [];
+    return questions.filter(q => 
+        q.examid === exam.id || 
+        (Array.isArray(exam.questions) && exam.questions.includes(q.id))
+    );
+  };
+
+  const handleStartExam = (exam: ExamMonth) => {
+    // Check if user already finished this exam
+    const hasFinished = (user?.examResults || []).some(r => r.examId === exam.id);
+    const isAllowedRetake = (user?.allowedRetakes || []).includes(exam.id);
+
+    if (hasFinished && !isAllowedRetake && user?.role !== 'admin') {
+        alert(text.retakeNotAllowed);
+        return;
+    }
+
+    const examQs = getExamQuestions(exam);
+    
+    if (examQs.length === 0) {
+        alert(lang === 'ar' ? "لا توجد أسئلة لهذا الاختبار حالياً." : "No questions found for this exam yet.");
+        return;
+    }
+
+    setActiveExam(exam);
+    setExamStep(0);
+    setAnswers({});
+    setScreen('exam');
+  };
+
+  const toggleRetake = async (userId: string, examId: string) => {
+    const targetUser = users.find(u => u.id === userId);
+    if (!targetUser) return;
+
+    const currentRetakes = targetUser.allowedRetakes || [];
+    let newRetakes: string[] = [];
+
+    if (currentRetakes.includes(examId)) {
+        newRetakes = currentRetakes.filter(id => id !== examId);
+    } else {
+        newRetakes = [...currentRetakes, examId];
+    }
+
+    // Optimistic update
+    setUsers(users.map(u => u.id === userId ? { ...u, allowedRetakes: newRetakes } : u));
+
+    // Save to Supabase
+    try {
+        await supabase
+            .from('users')
+            .update({ allowed_retakes: newRetakes })
+            .eq('id', userId);
+    } catch (err) {
+        console.error("Retake Update Error:", err);
+    }
+  };
+
+  const calculateScore = () => {
+    if (!activeExam) return 0;
+    let earnedPoints = 0;
+    let totalPossiblePoints = 0;
+    const examQs = getExamQuestions(activeExam);
+    examQs.forEach(q => {
+      totalPossiblePoints += (q.points || 0);
+      if (answers[q.id] === q.correctAnswer) {
+        earnedPoints += (q.points || 0);
+      }
+    });
+    if (totalPossiblePoints === 0) return 0;
+    return Math.round((earnedPoints / totalPossiblePoints) * 100);
+  };
+
+  const completeExam = async () => {
+    if (!activeExam || !user) return;
+    const { score, earned, total } = calculateResultData();
+    
+    // 1. Move to result screen IMMEDIATELY for best UX
+    setScreen('result');
+
+    // 2. Perform DB operations in background
+    (async () => {
+        try {
+            const { error } = await supabase
+                .from('results')
+                .insert([{
+                    user_id: user.id,
+                    exam_id: activeExam.id,
+                    score: score,
+                    raw_score: earned,
+                    max_score: total
+                }]);
+
+            if (error) console.error("Error saving result to Supabase:", error);
+
+            // Update user score in Supabase
+            const newTotalScore = (user.totalScore || 0) + score;
+            await supabase
+                .from('users')
+                .update({ total_score: newTotalScore, last_score: score })
+                .eq('id', user.id);
+        } catch (err) {
+            console.error("Database operation failed in background:", err);
+        }
+    })();
+  };
+
+  const calculateResultData = () => {
+    if (!activeExam) return { score: 0, earned: 0, total: 0 };
+    const examQs = getExamQuestions(activeExam);
+    let earnedPoints = 0;
+    let totalPossiblePoints = 0;
+
+    examQs.forEach(q => {
+      totalPossiblePoints += q.points;
+      if (answers[q.id] === q.correctAnswer) {
+        earnedPoints += q.points;
+      }
+    });
+
+    const score = totalPossiblePoints === 0 ? 0 : Math.round((earnedPoints / totalPossiblePoints) * 100);
+    return { score, earned: earnedPoints, total: totalPossiblePoints };
+  };
+
+  // --- UI Screens ---
+
+// --- Login Screen ---
+const LoginScreen = ({ 
+    isRtl, lang, setLang, text, dbStatus, handleLogin, selectedRegion, setSelectedRegion, MOCK_REGIONS, supabase 
+}: any) => {
+    const [loginMode, setLoginMode] = useState<'user' | 'admin' | null>(null);
+
+    return (
+      <div className="min-h-screen py-12 flex flex-col items-center justify-center p-6 sm:p-12 relative bg-transparent font-alfa" dir={isRtl ? 'rtl' : 'ltr'}>
+          {/* Extreme Blue Ambient Neon Glows */}
+          <div className="absolute top-[-15%] left-[-15%] w-[60%] h-[60%] alfa-ambient-blue blur-[120px] rounded-full opacity-40" />
+          <div className="absolute bottom-[-15%] right-[-15%] w-[60%] h-[60%] alfa-ambient-blue blur-[120px] rounded-full opacity-40" />
+
+          {/* Lang Toggle at Top Right */}
+          <div className={`absolute top-6 ${isRtl ? 'left-6' : 'right-6'} z-[100]`}>
+              <motion.button 
+                whileHover={{ scale: 1.1, rotate: 10 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} 
+                className="w-10 h-10 rounded-xl bg-white/40 border border-alfa-neon-blue/30 flex items-center justify-center text-alfa-neon-blue shadow-lg backdrop-blur-3xl"
+              >
+                  <Globe className="w-5 h-5" />
+              </motion.button>
+          </div>
+
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mb-0 sm:mb-4 relative z-10 transition-all duration-700">
+              <AlfaLogo size="md" />
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="w-full max-w-sm flex flex-col gap-2 relative z-10 mt-2 sm:mt-6">
+              {/* Database Status Indicator */}
+              <div className="flex items-center justify-center gap-2 mb-2">
+                  <div className={`w-2 h-2 rounded-full ${dbStatus.status === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus.status === 'error' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                      DB: {dbStatus.status === 'connected' ? 'CONNECTED' : dbStatus.status === 'syncing' ? 'SYNCING...' : dbStatus.status === 'empty' ? 'NO DATA' : 'DISCONNECTED'}
+                      {dbStatus.details && ` • ${dbStatus.details}`}
+                  </span>
+              </div>
+              
+              {!loginMode ? (
+                <div className="flex flex-col gap-6 p-4 mt-4">
+                   {/* Seed Data Button for initialization */}
+                   {dbStatus.status === 'empty' && (
+                     <button 
+                        onClick={async () => {
+                           // ... (same seeding logic if needed)
+                        }}
+                        className="mb-4 py-2 px-4 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/30 transition-all flex items-center justify-center gap-2"
+                     >
+                        <Zap className="w-3 h-3" /> Initialize Database with Sample Exam
+                     </button>
+                   )}
+
+                   <button onClick={() => setLoginMode('admin')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s] ease-in-out" />
+                      <Shield className="w-7 h-7 text-alfa-neon-blue drop-shadow-[0_0_8px_rgba(0,112,243,0.8)]" /> 
+                      <span className="text-white font-black text-lg tracking-widest alfa-text-neon uppercase font-logo">Administrator</span>
+                   </button>
+                   <button onClick={() => setLoginMode('user')} className="relative h-[70px] bg-alfa-blue/80 backdrop-blur-md border border-alfa-neon-blue rounded-[1.5rem] hover:bg-alfa-blue/90 transition-all flex items-center justify-center gap-4 overflow-hidden shadow-[0_0_20px_rgba(0,112,243,0.5)] group active:scale-95">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s] ease-in-out" />
+                      <User className="w-7 h-7 text-alfa-neon-blue drop-shadow-[0_0_8px_rgba(0,112,243,0.8)]" /> 
+                      <span className="text-white font-black text-lg tracking-widest alfa-text-neon uppercase font-logo">Employee User</span>
+                   </button>
+                </div>
+              ) : (
+                <form onSubmit={handleLogin} className="flex flex-col gap-2 p-2 relative">
+                  <button type="button" onClick={() => setLoginMode(null)} className="mb-2 text-white/50 text-[10px] font-black uppercase underline">Back</button>
+                  {loginMode === 'user' && (
+                    <>
+                      <AlfaInput label={text.empName} name="name" neon className="h-12" icon={<User className="w-5 h-5"/>} />
+                      <AlfaInput label={text.empCode} name="employeeId" neon className="h-12" icon={<ClipboardList className="w-5 h-5"/>} />
+                      <div className="flex flex-col gap-1 sm:gap-2.5">
+                        <label className="text-[10px] sm:text-[11px] font-black opacity-30 uppercase tracking-[0.25em] px-3">{text.region}</label>
+                        <div className="relative group rounded-[1.2rem] sm:rounded-[1.6rem] flex items-center h-[50px] sm:h-[68px] transition-all duration-500 alfa-neon-glass-input">
+                            <div className="absolute left-5 sm:left-7 text-alfa-blue group-focus-within:text-alfa-neon-blue transition-colors duration-500 z-10 pointer-events-none">
+                              <Globe className="w-5 h-5" />
+                            </div>
+                            <select 
+                                name="region" 
+                                value={selectedRegion} 
+                                onChange={(e) => setSelectedRegion(e.target.value)} 
+                                className="w-full h-full bg-transparent pl-12 sm:pl-16 pr-6 font-black text-alfa-blue outline-none text-base sm:text-2xl cursor-pointer appearance-none"
+                            >
+                                {MOCK_REGIONS.map((r: any) => <option key={r.id} value={r.id} className="text-black font-bold">{lang === 'ar' ? r.name.ar : r.name.en}</option>)}
+                            </select>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <AlfaInput label={text.password} name="password" neon className="h-12" placeholder={text.passwordPlaceholder} type="password" icon={<Lock className="w-5 h-5"/>} />
+                  {loginMode === 'admin' && <input type="hidden" name="employeeId" value="admin" />}
+                  <AlfaButton type="submit" className="w-full mt-2 h-14 text-xl shadow-xl alfa-neon-blue">
+                      {text.login}
+                  </AlfaButton>
+                </form>
+              )}
+          </motion.div>
+      </div>
+    );
+};
+
+// --- Dashboard Screen ---
+const DashboardScreen = ({ user, text, lang, setScreen, setLang, users, MOCK_PROGRESS }: any) => (
+    <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
+            <div className="flex items-center gap-2 sm:gap-4 relative z-10">
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-white/10 flex items-center justify-center text-white shadow-xl border border-cyan-400/50 shadow-[inset_0_0_5px_white]">
+                    <User className="w-5 h-5 sm:w-7 sm:h-7 text-cyan-400" />
+                </div>
+                <div>
+                   <h2 className="text-[8px] sm:text-[10px] text-white/50 font-black uppercase tracking-[0.3em] font-logo mb-0">👋 {text.welcome}</h2>
+                   <h1 className="text-sm sm:text-xl font-black tracking-tight leading-tight text-white">{user?.name}</h1>
+                </div>
+            </div>
+            <div className="flex gap-2 sm:gap-3 relative z-10">
+                <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="w-9 h-9 sm:w-12 sm:h-12 bg-white/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
+                    <Globe className="w-4 h-4 sm:w-6 h-6 text-cyan-400" />
+                </button>
+                <button onClick={() => setScreen('login')} className="w-9 h-9 sm:w-12 sm:h-12 bg-alfa-red/80 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
+                    <LogOut className="w-4 h-4 sm:w-6 h-6 text-white" />
+                </button>
+            </div>
+        </header>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
+            <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
+            <AlfaCard title={`⭐ ${user?.totalScore?.toLocaleString() ?? '0'}`} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
+            <AlfaCard title="🎖️ Elite" subtitle="RANK" className="hidden lg:block border-l-4 border-l-amber-500 !p-4 sm:!p-6" />
+            <AlfaCard title="💎 7" subtitle="BADGES" className="hidden lg:block border-l-4 border-l-purple-500 !p-4 sm:!p-6" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-6 flex-1 min-h-0">
+            <AlfaCard title={text.insights} className="lg:col-span-2 flex flex-col h-full bg-alfa-blue/[0.02]">
+                <div className="flex-1 w-full min-h-[80px] sm:min-h-0">
+                   <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={MOCK_PROGRESS}>
+                        <defs>
+                          <linearGradient id="colorAlfa" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#0070f3" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#0070f3" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" hide />
+                        <YAxis hide />
+                        <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
+                        <Area type="monotone" dataKey="score" stroke="#0070f3" strokeWidth={4} fill="url(#colorAlfa)" animationDuration={2000} />
+                      </AreaChart>
+                   </ResponsiveContainer>
+                </div>
+                <div className="mt-2 p-2 sm:p-4 bg-alfa-neon-blue/5 rounded-xl border border-alfa-neon-blue/10 backdrop-blur-sm">
+                    <p className="text-[9px] sm:text-sm italic font-black text-alfa-blue opacity-70 leading-relaxed font-logo">
+                        {lang === 'ar' ? "أداءك في تحاليل المختبر تطور بشكل ملحوظ. استمر في التميز." : "Lab analytics performance is peaking. Maintain excellence."}
+                    </p>
+                </div>
+            </AlfaCard>
+
+            <AlfaCard title={text.leaderboard} className="flex flex-col h-full">
+                <div className="flex flex-col gap-2 flex-1 overflow-hidden h-full">
+                    {users.filter((u: any) => u.role === 'user').sort((a: any,b: any) => b.totalScore - a.totalScore).slice(0, 3).map((p: any, i: number) => (
+                        <div key={i} className="flex justify-between items-center p-2 sm:p-4 rounded-xl sm:rounded-2xl bg-white/50 border border-alfa-neon-blue/5 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-2 sm:gap-4">
+                                <div className={`w-6 h-6 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-[9px] sm:text-xs font-black shadow-inner ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue'}`}>
+                                    {i + 1}
+                                </div>
+                                <span className="font-black text-sm sm:text-xl text-alfa-blue tracking-tight">{p.name.split(' ')[0]}</span>
+                            </div>
+                            <span className="font-black text-xs sm:text-lg text-alfa-neon-blue font-logo">{p.totalScore}</span>
+                        </div>
+                    ))}
+                </div>
+            </AlfaCard>
+        </div>
+
+        <div className="shrink-0 pt-2 sm:pt-4">
+            <button onClick={() => setScreen('months')} className="w-full h-14 sm:h-20 bg-alfa-blue text-white rounded-[2rem] sm:rounded-[3rem] font-logo flex items-center justify-center gap-3 sm:gap-4 shadow-[0_15px_30px_rgba(0,40,85,0.2)] hover:shadow-alfa-neon-blue/20 transition-all active:scale-[0.98] group overflow-hidden relative">
+               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+               <Zap className="w-5 h-5 sm:w-7 sm:h-7 text-alfa-neon-blue group-hover:scale-125 transition-transform" />
+               <span className="text-sm sm:text-xl uppercase tracking-[0.2em]">{text.startExam}</span>
+            </button>
+        </div>
+    </div>
+);
+
+// --- Months Screen ---
+const MonthsScreen = ({ 
+    exams, 
+    user, 
+    categoryTab, 
+    setCategoryTab, 
+    text, 
+    lang, 
+    setScreen, 
+    handleStartExam 
+}: any) => {
+    const activeExams = exams.filter((e: any) => e.status === 'active' || user?.role === 'admin');
+    const monthlyExams = activeExams.filter((e: any) => (e.type || 'monthly') === 'monthly');
+    const trainingExams = activeExams.filter((e: any) => e.type === 'training');
+    const currentList = categoryTab === 'monthly' ? monthlyExams : trainingExams;
+
+    return (
+        <div className="p-6 sm:p-12 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-12 min-h-full font-alfa overscroll-none" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+             <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue via-alfa-neon-blue/20 to-alfa-blue" />
+                <div className="flex items-center gap-4 relative z-10 w-full sm:w-auto">
+                    <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all">
+                        <ArrowLeft className={`w-5 h-5 sm:w-8 sm:h-8 ${lang === 'ar' ? 'rotate-180' : ''}`} />
+                    </button>
+                    <h1 className="text-xl sm:text-3xl font-black text-white tracking-tighter uppercase font-logo">📅 {text.months}</h1>
+                </div>
+                
+                <div className="flex bg-white/10 rounded-2xl p-1.5 border border-white/20 relative z-10 w-full sm:w-auto">
+                    <button onClick={() => setCategoryTab('monthly')} className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'monthly' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}>{text.monthlyExams}</button>
+                    <button onClick={() => setCategoryTab('training')} className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'training' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}>{text.training}</button>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 flex-1 overflow-y-auto pb-6 px-1 overscroll-contain">
+                {currentList.length === 0 ? (
+                    <div className="col-span-full py-20 text-center opacity-40"><p className="font-black uppercase tracking-widest">{lang === 'ar' ? 'لا توجد اختبارات حالياً' : 'No Exams Available'}</p></div>
+                ) : (
+                    currentList.map((m: any) => {
+                        const hasFinished = (user?.examResults || []).some((r: any) => r.examId === m.id);
+                        const isAllowedRetake = (user?.allowedRetakes || []).includes(m.id);
+                        const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
+
+                        return (
+                            <div key={m.id} onClick={() => !isDisabled && handleStartExam(m)} className={`group relative p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] alfa-glass flex flex-col justify-between aspect-square transition-all duration-700 cursor-pointer shadow-xl border-white/40 ${isDisabled ? 'opacity-40 grayscale-[0.8] cursor-not-allowed' : 'hover:scale-[1.03] hover:-translate-y-1 active:scale-95 border-alfa-neon-blue/5 hover:border-alfa-neon-blue/30'}`}>
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex justify-between items-start relative z-10">
+                                    <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.id}</span>
+                                    {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue" /></div>}
+                                </div>
+                                <div className="relative z-10">
+                                    <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">{lang === 'ar' ? (m.name?.ar || m.name_ar) : (m.name?.en || m.name_en)}</h3>
+                                    <p className={`text-[8px] sm:text-[11px] font-black uppercase tracking-[0.2em] mt-1 sm:mt-2 ${hasFinished ? 'text-emerald-500' : 'text-alfa-blue/40 font-logo'}`}>
+                                        {hasFinished ? (isAllowedRetake ? (lang === 'ar' ? 'متاح للإعادة' : 'Retake Available') : (lang === 'ar' ? 'تم الانتهاء' : 'Completed')) : (m.status === 'locked' ? 'Locked' : 'Available')}
+                                    </p>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
+};
+
+  const ResultScreen = ({ activeExam, answers, text, lang, setScreen, calculateResultData, isRtl }: any) => {
     const { score, earned, total } = calculateResultData();
     const passed = score >= 50;
 
@@ -968,11 +1045,12 @@ export default function App() {
             </motion.div>
         </div>
     );
-  };
+};
 
-  const ReviewScreen = () => {
+// --- Review Screen ---
+const ReviewScreen = ({ activeExam, getExamQuestions, answers, text, lang, setScreen, isRtl }: any) => {
     if (!activeExam) return null;
-    const examQs = questions.filter(q => activeExam.questions.includes(q.id));
+    const examQs = getExamQuestions(activeExam);
     return (
     <div className="min-h-screen p-6 max-w-lg mx-auto flex flex-col gap-6 transition-all" dir={isRtl ? 'rtl' : 'ltr'}>
       <header className="flex items-center gap-4">
@@ -982,7 +1060,7 @@ export default function App() {
         <h1 className="text-2xl font-black text-alfa-blue">{text.review}</h1>
       </header>
       <div className="space-y-6 overflow-y-auto max-h-[70vh] px-1 pb-10">
-        {examQs.map((q, i) => {
+        {examQs.map((q: any, i: number) => {
           const isCorrect = answers[q.id] === q.correctAnswer;
           return (
             <AlfaCard key={q.id} title={`${lang === 'ar' ? 'السؤال' : 'Question'} ${i + 1}`} className="border-white/80">
@@ -1008,12 +1086,13 @@ export default function App() {
   );
 };
 
-const AdminResults = () => {
+// --- Admin Results Screen ---
+const AdminResults = ({ users, exams, MOCK_REGIONS, lang, setScreen, isRtl, toggleRetake }: any) => {
     const exportToCSV = () => {
         const headers = ["Region,Name,Employee ID,Total Score,Exams Taken\n"];
         const rows = [...MOCK_REGIONS].flatMap(region => {
-            const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
-            return regionUsers.map(u => `${lang === 'ar' ? region.name.ar : region.name.en},${u.name},${u.employeeId},${u.totalScore},${u.examResults.length}\n`);
+            const regionUsers = users.filter((u: any) => u.role === 'user' && u.region === region.id);
+            return regionUsers.map((u: any) => `${lang === 'ar' ? region.name.ar : region.name.en},${u.name},${u.employeeId},${u.totalScore},${(u.examResults || []).length}\n`);
         });
         
         const blob = new Blob([...headers, ...rows], { type: 'text/csv' });
@@ -1046,12 +1125,12 @@ const AdminResults = () => {
         </header>
 
             <div className="space-y-12">
-                {MOCK_REGIONS.map(region => {
-                    const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
+                {MOCK_REGIONS.map((region: any) => {
+                    const regionUsers = users.filter((u: any) => u.role === 'user' && u.region === region.id);
                     if (regionUsers.length === 0) return null;
                     
                     const avgScore = regionUsers.length > 0 
-                        ? Math.round(regionUsers.reduce((acc, u) => acc + (u.lastScore || 0), 0) / regionUsers.length) 
+                        ? Math.round(regionUsers.reduce((acc: number, u: any) => acc + (u.lastScore || 0), 0) / regionUsers.length) 
                         : 0;
 
                     return (
@@ -1079,8 +1158,8 @@ const AdminResults = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-alfa-blue/5">
-                                            {regionUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => {
-                                                const lastResult = u.examResults[u.examResults.length - 1];
+                                            {regionUsers.sort((a: any, b: any) => b.totalScore - a.totalScore).map((u: any) => {
+                                                const uResults = u.examResults || [];
                                                 return (
                                                     <tr key={u.id} className="hover:bg-alfa-blue/[0.02] transition-colors">
                                                         <td className="px-6 py-4">
@@ -1092,10 +1171,10 @@ const AdminResults = () => {
                                                         <td className="px-6 py-4 text-center font-black text-alfa-blue/40 text-[10px] font-mono">{u.employeeId}</td>
                                                         <td className="px-6 py-4 text-center">
                                                             <div className="flex flex-col gap-1 items-center">
-                                                                {u.examResults.length > 0 ? (
-                                                                    u.examResults.map(res => {
-                                                                        const isAllowed = u.allowedRetakes?.includes(res.examId);
-                                                                        const exName = exams.find(e => e.id === res.examId)?.name[lang as 'ar'|'en'] || 'Exam';
+                                                                {(u.examResults || []).length > 0 ? (
+                                                                    (u.examResults || []).map((res: any) => {
+                                                                        const isAllowed = (u.allowedRetakes || []).includes(res.examId);
+                                                                        const exName = exams.find((e: any) => e.id === res.examId)?.name[lang as 'ar'|'en'] || 'Exam';
                                                                         return (
                                                                             <div key={res.examId} className="flex items-center gap-2 bg-alfa-blue/5 p-2 rounded-lg w-full justify-between min-w-[120px]">
                                                                                 <div className="flex flex-col items-start px-2">
@@ -1134,7 +1213,7 @@ const AdminResults = () => {
             <AlfaCard title={lang === 'ar' ? 'مساهمة المناطق' : 'Regional Share'}>
                 <div className="h-64 sm:h-80 w-full mt-6">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={MOCK_REGIONS.map(r => ({ name: lang === 'ar' ? r.name.ar : r.name.en, score: users.filter(u => u.region === r.id).reduce((acc, u) => acc + u.totalScore, 0) }))}>
+                        <AreaChart data={MOCK_REGIONS.map((r: any) => ({ name: lang === 'ar' ? r.name.ar : r.name.en, score: users.filter((u: any) => u.region === r.id).reduce((acc: number, u: any) => acc + u.totalScore, 0) }))}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#00285510" />
                             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
                             <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
@@ -1148,7 +1227,8 @@ const AdminResults = () => {
     );
 };
 
-  const AdminDashboard = () => (
+// --- Admin Dashboard Screen ---
+const AdminDashboard = ({ text, lang, setScreen, users, exams, questions, MOCK_PROGRESS, isRtl }: any) => (
     <div className="p-3 sm:p-10 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-10 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 shrink-0 bg-white/30 backdrop-blur-xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[3.5rem] border border-alfa-neon-blue/10 shadow-lg">
             <div className="flex flex-col">
@@ -1193,9 +1273,10 @@ const AdminResults = () => {
              </div>
         </AlfaCard>
     </div>
-  );
+);
 
-  const AdminUsers = () => {
+// --- Admin Users Screen ---
+const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: any) => {
     const [name, setName] = useState('');
     const [empId, setEmpId] = useState('');
     const [pass, setPass] = useState('');
@@ -1207,7 +1288,7 @@ const AdminResults = () => {
     const handleSaveUser = () => {
       if (!name || !empId) return;
       if (editingUserId) {
-          setUsers(users.map(u => u.id === editingUserId ? { ...u, name, employeeId: empId, role, region: regionId } : u));
+          setUsers(users.map((u: any) => u.id === editingUserId ? { ...u, name, employeeId: empId, role, region: regionId } : u));
       } else {
           const newUser: UserData = {
             id: Math.random().toString(36).substr(2, 9),
@@ -1227,7 +1308,7 @@ const AdminResults = () => {
 
     const deleteUser = (id: string) => {
         if (id === 'admin') return;
-        setUsers(users.filter(u => u.id !== id));
+        setUsers(users.filter((u: any) => u.id !== id));
     };
 
     const startEdit = (u: UserData) => {
@@ -1264,13 +1345,13 @@ const AdminResults = () => {
                         <button onClick={() => setShowForm(false)} className="text-alfa-red p-2"><XCircle className="w-6 h-6" /></button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                          <AlfaInput label={lang === 'ar' ? 'الأسم' : 'Name'} value={name} onChange={(e) => setName(e.target.value)} className="h-14 sm:h-16" />
-                          <AlfaInput label={lang === 'ar' ? 'كود الموظف' : 'Employee ID'} value={empId} onChange={(e) => setEmpId(e.target.value)} className="h-14 sm:h-16" />
+                          <AlfaInput label={lang === 'ar' ? 'الأسم' : 'Name'} value={name} onChange={(e: any) => setName(e.target.value)} className="h-14 sm:h-16" />
+                          <AlfaInput label={lang === 'ar' ? 'كود الموظف' : 'Employee ID'} value={empId} onChange={(e: any) => setEmpId(e.target.value)} className="h-14 sm:h-16" />
                           
                           <div className="flex flex-col gap-1.5">
                               <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'المنطقة' : 'Region'}</label>
-                              <select value={regionId} onChange={(e) => setRegionId(e.target.value)} className="h-[55px] sm:h-[65px] alfa-glass border-alfa-neon-blue/10 rounded-2xl px-6 font-black text-alfa-blue outline-none text-sm">
-                                  {MOCK_REGIONS.map(r => (
+                              <select value={regionId} onChange={(e: any) => setRegionId(e.target.value)} className="h-[55px] sm:h-[65px] alfa-glass border-alfa-neon-blue/10 rounded-2xl px-6 font-black text-alfa-blue outline-none text-sm">
+                                  {MOCK_REGIONS.map((r: any) => (
                                       <option key={r.id} value={r.id}>{lang === 'ar' ? `${r.name.ar} (${r.password})` : `${r.name.en} (${r.password})`}</option>
                                   ))}
                               </select>
@@ -1288,7 +1369,7 @@ const AdminResults = () => {
             </AnimatePresence>
 
             <div className="flex-1 overflow-y-auto min-h-0 py-2 space-y-3 px-1">
-                {users.map(u => (
+                {users.map((u: any) => (
                     <motion.div layout key={u.id} className="alfa-glass rounded-[1.5rem] sm:rounded-[2.5rem] p-3 sm:p-6 flex justify-between items-center transition-all bg-white/40 border-white shadow-xl">
                         <div className="flex items-center gap-3 sm:gap-4">
                             <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center font-black ${u.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-alfa-blue'}`}>
@@ -1297,8 +1378,8 @@ const AdminResults = () => {
                             <div>
                                 <h3 className="font-black text-alfa-blue text-sm sm:text-lg leading-tight uppercase tracking-tight">{u.name}</h3>
                                 <p className="text-[8px] sm:text-[10px] font-black opacity-30 uppercase tracking-[0.2em] mt-0.5 sm:mt-1">
-                                    ID: {u.employeeId} • {MOCK_REGIONS.find(r => r.id === u.region)?.name[lang as 'ar'|'en'] || u.region} 
-                                    <span className="text-alfa-neon-blue ml-2">PASS: {MOCK_REGIONS.find(r => r.id === u.region)?.password}</span>
+                                    ID: {u.employeeId} • {MOCK_REGIONS.find((r: any) => r.id === u.region)?.name[lang as 'ar'|'en'] || u.region} 
+                                    <span className="text-alfa-neon-blue ml-2">PASS: {MOCK_REGIONS.find((r: any) => r.id === u.region)?.password}</span>
                                 </p>
                             </div>
                         </div>
@@ -1311,9 +1392,10 @@ const AdminResults = () => {
             </div>
         </div>
     );
-  };
+};
 
-  const LeaderboardScreen = () => (
+// --- Leaderboard Screen ---
+const LeaderboardScreen = ({ users, isRtl, lang, setScreen }: any) => (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto flex flex-col gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex items-center gap-4 mb-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue/20" />
@@ -1323,7 +1405,7 @@ const AdminResults = () => {
             <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight relative z-10">{lang === 'ar' ? 'أفضل الموظفين' : 'Top Employees'}</h1>
         </header>
         <div className="space-y-4">
-            {users.filter(u => u.role === 'user').sort((a,b) => b.totalScore - a.totalScore).map((u, i) => (
+            {users.filter((u: any) => u.role === 'user').sort((a: any, b: any) => b.totalScore - a.totalScore).map((u: any, i: number) => (
                 <div key={u.id} className="alfa-glass rounded-[2rem] p-6 flex justify-between items-center bg-white/40 border-white shadow-xl">
                     <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-alfa-blue'}`}>
@@ -1342,7 +1424,7 @@ const AdminResults = () => {
             ))}
         </div>
     </div>
-  );
+);
 
   const StatsScreen = () => (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto flex flex-col gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -1412,13 +1494,14 @@ const AdminResults = () => {
     );
   };
 
-  const AdminExams = () => {
+// --- Admin Exams Screen ---
+const AdminExams = ({ exams, setExams, isRtl, lang, setScreen, supabase, setEditingExam }: any) => {
     const deleteExam = (id: string) => {
-        setExams(exams.filter(e => e.id !== id));
+        setExams(exams.filter((e: any) => e.id !== id));
     };
 
     const toggleExam = (id: string) => {
-        setExams(exams.map(e => e.id === id ? { ...e, status: e.status === 'active' ? 'locked' : 'active' } : e));
+        setExams(exams.map((e: any) => e.id === id ? { ...e, status: e.status === 'active' ? 'locked' : 'active' } : e));
     };
 
     return (
@@ -1437,7 +1520,40 @@ const AdminResults = () => {
         </header>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {exams.map(e => (
+                {exams.length === 0 ? (
+                    <div className="col-span-full py-20 flex flex-col items-center justify-center text-center alfa-glass rounded-[3rem] border-dashed border-2 border-alfa-blue/10">
+                        <div className="w-20 h-20 rounded-full bg-alfa-blue/5 flex items-center justify-center mb-6">
+                            <ClipboardList className="w-10 h-10 text-alfa-blue/20" />
+                        </div>
+                        <h2 className="text-2xl font-black text-alfa-blue mb-2">{lang === 'ar' ? 'لا توجد اختبارات في قاعدة البيانات' : 'No Exams in Database'}</h2>
+                        <p className="text-xs font-black opacity-30 uppercase tracking-widest mb-8 max-w-sm">
+                            {lang === 'ar' ? 'قاعدة البيانات متصلة ولكنها لا تعيد أي سجلات. قد تكون بسبب حماية RLS أو الجداول فارغة.' : 'Connection is active but no rows returned. This is usually due to RLS policies or empty tables.'}
+                        </p>
+                        <AlfaButton 
+                            onClick={async () => {
+                                try {
+                                    const { data, error } = await supabase.from('exams').insert([
+                                        { id: 'ex1', name: { ar: 'اختبار تجريبي', en: 'Demo Exam' }, status: 'active', duration: 300, questions: [], points: 100, type: 'monthly' }
+                                    ]).select();
+                                    if (error) throw error;
+                                    alert('Successfully added a demo exam row!');
+                                    window.location.reload();
+                                } catch (e: any) {
+                                    const errorMsg = e.message || 'Unknown Error';
+                                    let helpfulTip = "This confirms that RLS is ENABLED and blocking writes.";
+                                    if (errorMsg.includes('policy')) {
+                                        helpfulTip = "SOLVE THIS: Go to Supabase SQL Editor and run: ALTER TABLE public.exams DISABLE ROW LEVEL SECURITY;";
+                                    }
+                                    alert('Failed to add: ' + errorMsg + '\n\n' + helpfulTip);
+                                }
+                            }}
+                            variant="primary" 
+                            className="h-14 px-10 shadow-xl"
+                        >
+                            <Zap className="w-5 h-5 mr-2" /> {lang === 'ar' ? 'إنشاء اختبار تجريبي الآن' : 'Create Demo Exam Row'}
+                        </AlfaButton>
+                    </div>
+                ) : exams.map((e: any) => (
                     <AlfaCard key={e.id} className="relative group overflow-hidden border-white/80 p-6 rounded-[2.5rem]">
                         <div className="flex justify-between items-start mb-4">
                             <div>
@@ -1451,7 +1567,7 @@ const AdminResults = () => {
 
                         <div className="flex flex-wrap gap-3 mb-6">
                             <div className="flex items-center gap-1.5 text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest"><Timer className="w-3.5 h-3.5" /> {e.duration / 60}m</div>
-                            <div className="flex items-center gap-1.5 text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest"><List className="w-3.5 h-3.5" /> {e.questions.length} Qs</div>
+                            <div className="flex items-center gap-1.5 text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest"><List className="w-3.5 h-3.5" /> {(e.questions || []).length} Qs</div>
                         </div>
 
                         <div className="flex gap-2">
@@ -1463,9 +1579,10 @@ const AdminResults = () => {
             </div>
         </div>
     );
-  };
+};
 
-  const AdminExamEdit = () => {
+// --- Admin Exam Edit Screen ---
+const AdminExamEdit = ({ editingExam, setEditingExam, exams, setExams, isRtl, lang, setScreen, text, questions }: any) => {
     const [arName, setArName] = useState(editingExam?.name.ar || '');
     const [enName, setEnName] = useState(editingExam?.name.en || '');
     const [duration, setDuration] = useState(editingExam?.duration || 300);
@@ -1489,7 +1606,7 @@ const AdminResults = () => {
         };
 
         if (editingExam) {
-            setExams(exams.map(e => e.id === id ? updatedExam : e));
+            setExams(exams.map((e: any) => e.id === id ? updatedExam : e));
         } else {
             setExams([...exams, updatedExam]);
         }
@@ -1523,15 +1640,15 @@ const AdminResults = () => {
                                 </button>
                             </div>
                             {examType === 'training' && (
-                                <AlfaInput label={text.groupName} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+                                <AlfaInput label={text.groupName} value={groupName} onChange={(e: any) => setGroupName(e.target.value)} />
                             )}
-                            <AlfaInput label="Arabic Name" value={arName} onChange={(e) => setArName(e.target.value)} />
-                            <AlfaInput label="English Name" value={enName} onChange={(e) => setEnName(e.target.value)} />
+                            <AlfaInput label="Arabic Name" value={arName} onChange={(e: any) => setArName(e.target.value)} />
+                            <AlfaInput label="English Name" value={enName} onChange={(e: any) => setEnName(e.target.value)} />
                             <div className="grid grid-cols-2 gap-4">
-                                <AlfaInput label="Duration (Seconds)" type="number" value={duration.toString()} onChange={(e) => setDuration(Number(e.target.value))} />
+                                <AlfaInput label="Duration (Seconds)" type="number" value={duration.toString()} onChange={(e: any) => setDuration(Number(e.target.value))} />
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] font-black opacity-30 mt-1 uppercase tracking-widest px-2">Total Score</label>
-                                    <AlfaInput label="Total Points" type="number" value={totalPoints.toString()} onChange={(e) => setTotalPoints(Number(e.target.value))} />
+                                    <AlfaInput label="Total Points" type="number" value={totalPoints.toString()} onChange={(e: any) => setTotalPoints(Number(e.target.value))} />
                                 </div>
                             </div>
                         </div>
@@ -1541,7 +1658,7 @@ const AdminResults = () => {
 
                 <AlfaCard title="Questions Selection" subtitle={`${selectedQs.length} items checked`} className="border-alfa-blue/5 flex flex-col">
                     <div className="space-y-3 overflow-y-auto max-h-[500px] pr-2 mt-4 pb-4">
-                        {questions.map(q => {
+                        {questions.map((q: any) => {
                             const isSelected = selectedQs.includes(q.id);
                             return (
                                 <button key={q.id} onClick={() => setSelectedQs(isSelected ? selectedQs.filter(id => id !== q.id) : [...selectedQs, q.id])} className={`w-full text-start p-5 rounded-[1.5rem] border-2 transition-all duration-300 ${isSelected ? 'bg-alfa-blue text-white shadow-xl border-alfa-blue' : 'alfa-glass text-alfa-blue border-transparent hover:border-white/60'}`}>
@@ -1555,15 +1672,16 @@ const AdminResults = () => {
             </div>
         </div>
     );
-  };
+};
 
-  const AdminQuestions = () => {
+// --- Admin Questions Screen ---
+const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text }: any) => {
     const [isAddModal, setIsAddModal] = useState(false);
     const [newQ, setNewQ] = useState<Partial<Question>>({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 5 });
     const [mcOptions, setMcOptions] = useState(['', '', '']);
 
     const deleteQuestion = (id: string) => {
-        setQuestions(questions.filter(q => q.id !== id));
+        setQuestions(questions.filter((q: any) => q.id !== id));
     };
 
     const addQuestion = () => {
@@ -1604,11 +1722,11 @@ const AdminResults = () => {
                         <motion.div initial={{ x: 300 }} animate={{ x: 0 }} exit={{ x: 300 }} className="h-full w-full max-w-md alfa-glass rounded-[2.5rem] p-8 overflow-y-auto shadow-[0_0_50px_rgba(0,40,85,0.15)] border-l-2 border-l-alfa-blue/20">
                             <h2 className="text-2xl font-black text-alfa-blue mb-8 tracking-tight">{lang === 'ar' ? 'إضافة سؤال جديد' : 'Add Question'}</h2>
                             <div className="flex flex-col gap-6">
-                                <AlfaInput label={lang === 'ar' ? 'نص السؤال (بالعربي)' : 'Question (Arabic)'} value={newQ.text?.ar} onChange={(e) => setNewQ({...newQ, text: {ar: e.target.value, en: e.target.value} as any})} />
+                                <AlfaInput label={lang === 'ar' ? 'نص السؤال (بالعربي)' : 'Question (Arabic)'} value={newQ.text?.ar} onChange={(e: any) => setNewQ({...newQ, text: {ar: e.target.value, en: e.target.value} as any})} />
                                 
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'نوع السؤال' : 'Question Type'}</label>
-                                    <select value={newQ.type} onChange={(e) => {
+                                    <select value={newQ.type} onChange={(e: any) => {
                                         const type = e.target.value as any;
                                         setNewQ({...newQ, type, correctAnswer: type === 'tf' ? 'True' : ''});
                                     }} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
@@ -1621,7 +1739,7 @@ const AdminResults = () => {
                                     <div className="space-y-4 p-4 rounded-3xl bg-alfa-blue/5 border border-alfa-blue/10">
                                         <p className="text-[10px] font-black opacity-30 uppercase tracking-widest text-center">{lang === 'ar' ? 'الخيارات المتاحة' : 'Options'}</p>
                                         {mcOptions.map((opt, i) => (
-                                            <AlfaInput key={i} label={`${lang === 'ar' ? 'الخيار' : 'Option'} ${i + 1}`} value={opt} onChange={(e) => {
+                                            <AlfaInput key={i} label={`${lang === 'ar' ? 'الخيار' : 'Option'} ${i + 1}`} value={opt} onChange={(e: any) => {
                                                 const newOps = [...mcOptions];
                                                 newOps[i] = e.target.value;
                                                 setMcOptions(newOps);
@@ -1633,18 +1751,18 @@ const AdminResults = () => {
                                 )}
 
                                 <div className="space-y-2">
-                                    <AlfaInput label={lang === 'ar' ? 'الدرجة' : 'Score Points'} type="number" value={newQ.points?.toString()} onChange={(e) => setNewQ({...newQ, points: Number(e.target.value)})} />
+                                    <AlfaInput label={lang === 'ar' ? 'الدرجة' : 'Score Points'} type="number" value={newQ.points?.toString()} onChange={(e: any) => setNewQ({...newQ, points: Number(e.target.value)})} />
                                 </div>
 
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'الإجابة الصحيحة' : 'Correct Answer'}</label>
                                     {newQ.type === 'tf' ? (
-                                        <select value={newQ.correctAnswer} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
+                                        <select value={newQ.correctAnswer} onChange={(e: any) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
                                             <option value="True">{lang === 'ar' ? 'صح' : 'True'}</option>
                                             <option value="False">{lang === 'ar' ? 'خطأ' : 'False'}</option>
                                         </select>
                                     ) : (
-                                        <select value={newQ.correctAnswer} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
+                                        <select value={newQ.correctAnswer} onChange={(e: any) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
                                             <option value="" disabled>{lang === 'ar' ? 'اختر الإجابة' : 'Select answer'}</option>
                                             {mcOptions.filter(o => o.trim()).map((opt, i) => (
                                                 <option key={i} value={opt}>{opt}</option>
@@ -1664,7 +1782,7 @@ const AdminResults = () => {
             </AnimatePresence>
 
             <div className="grid grid-cols-1 gap-4">
-                {questions.map(q => (
+                {questions.map((q: any) => (
                     <AlfaCard key={q.id} className="relative border-white shadow-xl rounded-[2.5rem] p-6">
                         <div className="flex justify-between items-start mb-4">
                              <div>
@@ -1676,7 +1794,7 @@ const AdminResults = () => {
                              </button>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            {(lang === 'ar' ? q.options?.ar : q.options?.en || [text.true, text.false])?.map(opt => (
+                            {(lang === 'ar' ? q.options?.ar : q.options?.en || [text.true, text.false])?.map((opt: string) => (
                                 <div key={opt} className={`px-4 py-2 rounded-lg text-xs font-black border ${opt === q.correctAnswer || (q.type === 'tf' && (opt === text.true ? 'True' : 'False') === q.correctAnswer) ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-white/40 border-transparent opacity-40'}`}>
                                     {opt}
                                 </div>
@@ -1687,26 +1805,135 @@ const AdminResults = () => {
             </div>
         </div>
     );
-  };
+};
+
+
+  const ExamScreenProxy = () => (
+    <ExamScreen 
+        activeExam={activeExam}
+        questions={questions}
+        examStep={examStep}
+        setExamStep={setExamStep}
+        answers={answers}
+        setAnswers={setAnswers}
+        completeExam={completeExam}
+        lang={lang}
+        isRtl={isRtl}
+        text={text}
+        getExamQuestions={getExamQuestions}
+        setScreen={setScreen}
+    />
+  );
 
   return (
     <div className="h-screen w-full flex flex-col select-none bg-alfa-bg text-alfa-text alfa-app-border overflow-hidden">
        <main className="flex-1 overflow-y-auto w-full relative">
            <AnimatePresence mode="wait">
-            {screen === 'login' && <LoginScreen key="login" />}
-            {screen === 'dashboard' && <DashboardScreen key="dashboard" />}
-            {screen === 'months' && <MonthsScreen key="months" />}
-            {screen === 'exam' && <ExamScreen key="exam" />}
-            {screen === 'result' && <ResultScreen key="result" />}
-            {screen === 'review' && <ReviewScreen key="review" />}
-            {screen === 'leaderboard' && <LeaderboardScreen key="leaderboard" />}
-            {screen === 'stats' && <StatsScreen key="stats" />}
-            {screen === 'admin_dashboard' && <AdminDashboard key="admin" />}
-            {screen === 'admin_users' && <AdminUsers key="admin_users" />}
-            {screen === 'admin_exams' && <AdminExams key="admin_exams" />}
-            {screen === 'admin_exam_edit' && <AdminExamEdit key="admin_exam_edit" />}
-            {screen === 'admin_questions' && <AdminQuestions key="admin_questions" />}
-            {screen === 'admin_results' && <AdminResults key="admin_results" />}
+            {screen === 'login' && (
+                <LoginScreen 
+                    key="login" 
+                    isRtl={isRtl} lang={lang} setLang={setLang} text={text} 
+                    dbStatus={dbStatus} handleLogin={handleLogin} 
+                    selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion} 
+                    MOCK_REGIONS={MOCK_REGIONS} supabase={supabase} 
+                />
+            )}
+            {screen === 'dashboard' && (
+                <DashboardScreen 
+                    key="dashboard"
+                    user={user} text={text} lang={lang} 
+                    setScreen={setScreen} setLang={setLang} 
+                    users={users} MOCK_PROGRESS={MOCK_PROGRESS} 
+                />
+            )}
+            {screen === 'months' && (
+                <MonthsScreen 
+                    key="months"
+                    user={user} exams={exams} lang={lang} isRtl={isRtl} 
+                    setScreen={setScreen} setActiveExam={setActiveExam} 
+                    setSelectedMonth={setSelectedMonth} 
+                    filteredExams={filteredExams} currentMonthExams={currentMonthExams} 
+                    monthsNames={monthsNames}
+                />
+            )}
+            {screen === 'exam' && <ExamScreenProxy key="exam" />}
+            {screen === 'result' && (
+                <ResultScreen 
+                    key="result"
+                    activeExam={activeExam} answers={answers} 
+                    text={text} lang={lang} setScreen={setScreen} 
+                    calculateResultData={calculateResultData} isRtl={isRtl}
+                />
+            )}
+            {screen === 'review' && (
+                <ReviewScreen 
+                    key="review"
+                    activeExam={activeExam} getExamQuestions={getExamQuestions} 
+                    answers={answers} text={text} lang={lang} setScreen={setScreen} 
+                />
+            )}
+            {screen === 'leaderboard' && (
+                <LeaderboardScreen 
+                    key="leaderboard"
+                    users={users} isRtl={isRtl} lang={lang} setScreen={setScreen} 
+                />
+            )}
+            {screen === 'stats' && (
+                <StatsScreen 
+                    key="stats"
+                    isRtl={isRtl} setScreen={setScreen} lang={lang} 
+                    users={users} exams={exams} questions={questions} 
+                    results={null /* Results state if needed */} 
+                    MOCK_PROGRESS={MOCK_PROGRESS} 
+                />
+            )}
+            {screen === 'admin_dashboard' && (
+                <AdminDashboard 
+                    key="admin" 
+                    text={text} lang={lang} setScreen={setScreen} 
+                    users={users} exams={exams} questions={questions} 
+                    MOCK_PROGRESS={MOCK_PROGRESS} isRtl={isRtl}
+                />
+            )}
+            {screen === 'admin_users' && (
+                <AdminUsers 
+                    key="admin_users" 
+                    users={users} setUsers={setUsers} setScreen={setScreen} 
+                    MOCK_REGIONS={MOCK_REGIONS} lang={lang} isRtl={isRtl}
+                />
+            )}
+            {screen === 'admin_exams' && (
+                <AdminExams 
+                    key="admin_exams" 
+                    exams={exams} setExams={setExams} isRtl={isRtl} 
+                    lang={lang} setScreen={setScreen} supabase={supabase} 
+                    setEditingExam={setEditingExam} 
+                />
+            )}
+            {screen === 'admin_exam_edit' && (
+                <AdminExamEdit 
+                    key="admin_exam_edit" 
+                    editingExam={editingExam} setEditingExam={setEditingExam} 
+                    exams={exams} setExams={setExams} isRtl={isRtl} 
+                    lang={lang} setScreen={setScreen} text={text} 
+                    questions={questions} 
+                />
+            )}
+            {screen === 'admin_questions' && (
+                <AdminQuestions 
+                    key="admin_questions" 
+                    questions={questions} setQuestions={setQuestions} 
+                    isRtl={isRtl} lang={lang} setScreen={setScreen} text={text} 
+                />
+            )}
+            {screen === 'admin_results' && (
+                <AdminResults 
+                    key="admin_results" 
+                    users={users} exams={exams} MOCK_REGIONS={MOCK_REGIONS} 
+                    lang={lang} setScreen={setScreen} isRtl={isRtl} 
+                    toggleRetake={toggleRetake}
+                />
+            )}
            </AnimatePresence>
        </main>
        
