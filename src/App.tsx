@@ -434,14 +434,11 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [screenHistory]);
 
-  // Stateful Data
+  // Stateful Data - Initialize as empty to force DB fetch
   const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
-  const [users, setUsers] = useState<UserData[]>([
-    { id: 'admin', name: 'Super Admin', employeeId: 'admin', password: 'admin', region: 'r1', totalScore: 99999, lastScore: 100, badges: ['Admin'], role: 'admin', examResults: [] },
-    { id: 'u1', name: 'User 1', employeeId: '1234', password: '1101', region: 'r1', totalScore: 0, lastScore: 0, badges: [], role: 'user', examResults: [] }
-  ]);
-  const [exams, setExams] = useState<ExamMonth[]>(MOCK_MONTHS);
-  const [questions, setQuestions] = useState<Question[]>(MOCK_QUESTIONS);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [exams, setExams] = useState<ExamMonth[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   
   // Exam State
   const [activeExam, setActiveExam] = useState<ExamMonth | null>(null);
@@ -517,7 +514,7 @@ export default function App() {
         const { data: usersData } = await supabase.from('users').select('*');
         const { data: resultsData } = await supabase.from('results').select('*');
         
-        if (usersData && usersData.length > 0) {
+        if (usersData) {
           const mappedUsers = usersData.map(u => {
             const userResults = (resultsData || [])
               .filter(r => r.user_id === u.id)
