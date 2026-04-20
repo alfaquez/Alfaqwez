@@ -12,7 +12,6 @@ import {
 import { AlfaButton } from './components/AlfaButton';
 import { AlfaInput } from './components/AlfaInput';
 import { AlfaCard } from './components/AlfaCard';
-import { AlfaLogo } from './components/AlfaLogo';
 import { supabase } from './lib/supabaseClient';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -221,6 +220,47 @@ const MOCK_PROGRESS = [
 
 // --- Sub-Components ---
 
+const AlfaLogo = () => (
+  <div className="flex flex-col items-center scale-[0.85] sm:scale-100 py-0 -mt-2 sm:-mt-6">
+    <div className="relative w-28 h-28 sm:w-36 sm:h-36 mb-1 sm:mb-6">
+      <div className="absolute inset-0 flex items-center justify-center group cursor-pointer transition-transform duration-500 hover:scale-110">
+         <motion.div 
+            animate={{ 
+              opacity: [0.9, 1, 0.9],
+              scale: [1, 1.05, 1],
+            }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            className="w-full h-full flex items-center justify-center relative" 
+         >
+            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] bg-white flex items-center justify-center shadow-[0_15px_60px_rgba(0,112,243,0.25)] border border-alfa-neon-blue/20 relative overflow-hidden">
+               <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+            </div>
+         </motion.div>
+      </div>
+    </div>
+    <div className="text-center">
+      <div className="inline-block px-8 py-3 sm:px-12 sm:py-5 rounded-full border border-alfa-neon-blue/10 bg-white/40 shadow-[0_10px_35px_rgba(0,112,243,0.12)] backdrop-blur-3xl relative overflow-hidden group">
+        <h1 className="text-alfa-blue text-3xl sm:text-6xl font-black tracking-tighter font-logo relative z-10 transition-all duration-700 drop-shadow-[0_6px_10px_rgba(0,112,243,0.2)] uppercase">
+           Alfa <span className="text-alfa-neon-blue alfa-text-neon">Quez</span>
+        </h1>
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-alfa-neon-blue/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+      </div>
+      <div className="mt-5 flex flex-col gap-2">
+        <div className="inline-block px-5 py-1.5 rounded-full border border-alfa-neon-blue/10 bg-white/30 backdrop-blur-md shadow-sm">
+          <p className="text-[10px] sm:text-[13px] font-black text-alfa-blue uppercase tracking-tight font-logo">
+            Design by : <span className="text-alfa-neon-blue alfa-text-neon">islam alsapaa</span>
+          </p>
+        </div>
+        <div className="inline-block px-5 py-1.5 rounded-full border border-alfa-neon-blue/10 bg-white/30 backdrop-blur-md shadow-sm">
+          <p className="text-[10px] sm:text-[13px] font-black text-alfa-blue uppercase tracking-tight font-logo">
+            Content developed by : <span className="text-alfa-neon-blue alfa-text-neon">training team</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 // --- Top-Level Components to prevent re-mounting flicker ---
 const ExamScreen = ({ 
   activeExam, 
@@ -406,24 +446,6 @@ export default function App() {
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
   
-  // Login State
-  const [selectedRegion, setSelectedRegion] = useState(MOCK_REGIONS[0].id);
-
-  // Month Selection State
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
-
-  const monthsNames = [
-    { ar: 'يناير', en: 'January' }, { ar: 'فبراير', en: 'February' }, { ar: 'مارس', en: 'March' },
-    { ar: 'أبريل', en: 'April' }, { ar: 'مايو', en: 'May' }, { ar: 'يونيو', en: 'June' },
-    { ar: 'يوليو', en: 'July' }, { ar: 'أغسطس', en: 'August' }, { ar: 'سبتمبر', en: 'September' },
-    { ar: 'أكتوبر', en: 'October' }, { ar: 'نوفمبر', en: 'November' }, { ar: 'ديسمبر', en: 'December' }
-  ];
-
-  const filteredExams = user?.role === 'admin' ? exams : exams.filter(e => e.status === 'active');
-  const currentMonthExams = selectedMonth !== null 
-    ? filteredExams.filter(e => e.type === 'monthly' && e.name[lang as 'ar'|'en'].includes(monthsNames[selectedMonth][lang as 'ar'|'en']))
-    : [];
-
   const isRtl = lang === 'ar';
   const text = translations[lang];
 
@@ -492,8 +514,7 @@ export default function App() {
             employeeId: u.employee_id || u.employeeId,
             totalScore: Number(u.total_score || u.totalScore || 0),
             lastScore: Number(u.last_score || u.lastScore || 0),
-            examResults: Array.isArray(u.exam_results || u.examResults) ? (u.exam_results || u.examResults) : [],
-            allowedRetakes: Array.isArray(u.allowed_retakes || u.allowedRetakes) ? (u.allowed_retakes || u.allowedRetakes) : []
+            examResults: Array.isArray(u.exam_results || u.examResults) ? (u.exam_results || u.examResults) : []
           }));
           setUsers(mappedUsers as UserData[]);
         }
@@ -609,31 +630,18 @@ export default function App() {
     setScreen('exam');
   };
 
-  const toggleRetake = async (userId: string, examId: string) => {
-    const targetUser = users.find(u => u.id === userId);
-    if (!targetUser) return;
-
-    const currentRetakes = targetUser.allowedRetakes || [];
-    let newRetakes: string[] = [];
-
-    if (currentRetakes.includes(examId)) {
-        newRetakes = currentRetakes.filter(id => id !== examId);
-    } else {
-        newRetakes = [...currentRetakes, examId];
-    }
-
-    // Optimistic update
-    setUsers(users.map(u => u.id === userId ? { ...u, allowedRetakes: newRetakes } : u));
-
-    // Save to Supabase
-    try {
-        await supabase
-            .from('users')
-            .update({ allowed_retakes: newRetakes })
-            .eq('id', userId);
-    } catch (err) {
-        console.error("Retake Update Error:", err);
-    }
+  const toggleRetake = (userId: string, examId: string) => {
+    setUsers(users.map(u => {
+        if (u.id === userId) {
+            const retakes = u.allowedRetakes || [];
+            if (retakes.includes(examId)) {
+                return { ...u, allowedRetakes: retakes.filter(id => id !== examId) };
+            } else {
+                return { ...u, allowedRetakes: [...retakes, examId] };
+            }
+        }
+        return u;
+    }));
   };
 
   const calculateScore = () => {
@@ -655,34 +663,32 @@ export default function App() {
     if (!activeExam || !user) return;
     const { score, earned, total } = calculateResultData();
     
-    // 1. Move to result screen IMMEDIATELY for best UX
+    // Save to Supabase (Gracefully handle failures)
+    try {
+        const { error } = await supabase
+            .from('results')
+            .insert([{
+                user_id: user.id,
+                exam_id: activeExam.id,
+                score: score,
+                raw_score: earned,
+                max_score: total
+            }]);
+
+        if (error) console.error("Error saving result to Supabase:", error);
+
+        // Update user score in Supabase
+        const newTotalScore = (user.totalScore || 0) + score;
+        await supabase
+            .from('users')
+            .update({ total_score: newTotalScore, last_score: score })
+            .eq('id', user.id);
+    } catch (err) {
+        console.error("Database operation failed:", err);
+    }
+
+    // ALWAYS proceed to result screen
     setScreen('result');
-
-    // 2. Perform DB operations in background
-    (async () => {
-        try {
-            const { error } = await supabase
-                .from('results')
-                .insert([{
-                    user_id: user.id,
-                    exam_id: activeExam.id,
-                    score: score,
-                    raw_score: earned,
-                    max_score: total
-                }]);
-
-            if (error) console.error("Error saving result to Supabase:", error);
-
-            // Update user score in Supabase
-            const newTotalScore = (user.totalScore || 0) + score;
-            await supabase
-                .from('users')
-                .update({ total_score: newTotalScore, last_score: score })
-                .eq('id', user.id);
-        } catch (err) {
-            console.error("Database operation failed in background:", err);
-        }
-    })();
   };
 
   const calculateResultData = () => {
@@ -704,11 +710,9 @@ export default function App() {
 
   // --- UI Screens ---
 
-// --- Login Screen ---
-const LoginScreen = ({ 
-    isRtl, lang, setLang, text, dbStatus, handleLogin, selectedRegion, setSelectedRegion, MOCK_REGIONS, supabase 
-}: any) => {
+  const LoginScreen = () => {
     const [loginMode, setLoginMode] = useState<'user' | 'admin' | null>(null);
+    const [selectedRegion, setSelectedRegion] = useState(MOCK_REGIONS[0].id);
 
     return (
       <div className="min-h-screen py-12 flex flex-col items-center justify-center p-6 sm:p-12 relative bg-transparent font-alfa" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -729,7 +733,7 @@ const LoginScreen = ({
           </div>
 
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mb-0 sm:mb-4 relative z-10 transition-all duration-700">
-              <AlfaLogo size="md" />
+              <AlfaLogo />
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="w-full max-w-sm flex flex-col gap-2 relative z-10 mt-2 sm:mt-6">
@@ -748,7 +752,29 @@ const LoginScreen = ({
                    {dbStatus.status === 'empty' && (
                      <button 
                         onClick={async () => {
-                           // ... (same seeding logic if needed)
+                           setDbStatus({ status: 'syncing', details: 'Seeding Database...' });
+                           try {
+                             // Seed One Exam
+                             const { data: exData, error: exErr } = await supabase.from('exams').insert([
+                               { id: '1', name: { ar: 'يناير 2026', en: 'January 2026' }, status: 'active', duration: 1800, questions: ['q1', 'q2'], points: 100, type: 'monthly' }
+                             ]).select();
+                             
+                             if (exErr) throw exErr;
+
+                             // Seed Questions
+                             const { error: qErr } = await supabase.from('questions').insert([
+                               { id: 'q1', examid: '1', text: { ar: 'هل يجب غسل اليدين قبل سحب العينة؟', en: 'Wash hands before sampling?' }, type: 'tf', correctAnswer: 'True', points: 50 },
+                               { id: 'q2', examid: '1', text: { ar: 'ما هو اللون القياسي لأنبوب السيترات؟', en: 'Standard Citrate tube color?' }, type: 'mc', options: { ar: ['أزرق', 'أحمر', 'أسود'], en: ['Blue', 'Red', 'Black'] }, correctAnswer: 'Blue', points: 50 }
+                             ]);
+                             
+                             if (qErr) throw qErr;
+                             
+                             alert('Database Seeded Successfully! Refreshing...');
+                             window.location.reload();
+                           } catch (err: any) {
+                             alert('Seed Error: ' + err.message);
+                             setDbStatus({ status: 'error', details: err.message });
+                           }
                         }}
                         className="mb-4 py-2 px-4 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/30 transition-all flex items-center justify-center gap-2"
                      >
@@ -786,13 +812,14 @@ const LoginScreen = ({
                                 onChange={(e) => setSelectedRegion(e.target.value)} 
                                 className="w-full h-full bg-transparent pl-12 sm:pl-16 pr-6 font-black text-alfa-blue outline-none text-base sm:text-2xl cursor-pointer appearance-none"
                             >
-                                {MOCK_REGIONS.map((r: any) => <option key={r.id} value={r.id} className="text-black font-bold">{lang === 'ar' ? r.name.ar : r.name.en}</option>)}
+                                {MOCK_REGIONS.map(r => <option key={r.id} value={r.id} className="text-black font-bold">{lang === 'ar' ? r.name.ar : r.name.en}</option>)}
                             </select>
                         </div>
                       </div>
                     </>
                   )}
                   <AlfaInput label={text.password} name="password" neon className="h-12" placeholder={text.passwordPlaceholder} type="password" icon={<Lock className="w-5 h-5"/>} />
+                  {/* Hidden input for employeeId if in admin mode */}
                   {loginMode === 'admin' && <input type="hidden" name="employeeId" value="admin" />}
                   <AlfaButton type="submit" className="w-full mt-2 h-14 text-xl shadow-xl alfa-neon-blue">
                       {text.login}
@@ -802,11 +829,10 @@ const LoginScreen = ({
           </motion.div>
       </div>
     );
-};
+  };
 
-// --- Dashboard Screen ---
-const DashboardScreen = ({ user, text, lang, setScreen, setLang, users, MOCK_PROGRESS }: any) => (
-    <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+  const DashboardScreen = () => (
+    <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
             <div className="flex items-center gap-2 sm:gap-4 relative z-10">
                 <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-white/10 flex items-center justify-center text-white shadow-xl border border-cyan-400/50 shadow-[inset_0_0_5px_white]">
@@ -861,7 +887,7 @@ const DashboardScreen = ({ user, text, lang, setScreen, setLang, users, MOCK_PRO
 
             <AlfaCard title={text.leaderboard} className="flex flex-col h-full">
                 <div className="flex flex-col gap-2 flex-1 overflow-hidden h-full">
-                    {users.filter((u: any) => u.role === 'user').sort((a: any,b: any) => b.totalScore - a.totalScore).slice(0, 3).map((p: any, i: number) => (
+                    {users.filter(u => u.role === 'user').sort((a,b) => b.totalScore - a.totalScore).slice(0, 3).map((p, i) => (
                         <div key={i} className="flex justify-between items-center p-2 sm:p-4 rounded-xl sm:rounded-2xl bg-white/50 border border-alfa-neon-blue/5 shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center gap-2 sm:gap-4">
                                 <div className={`w-6 h-6 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-[9px] sm:text-xs font-black shadow-inner ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue'}`}>
@@ -884,47 +910,49 @@ const DashboardScreen = ({ user, text, lang, setScreen, setLang, users, MOCK_PRO
             </button>
         </div>
     </div>
-);
+  );
 
-// --- Months Screen ---
-const MonthsScreen = ({ 
-    exams, 
-    user, 
-    categoryTab, 
-    setCategoryTab, 
-    text, 
-    lang, 
-    setScreen, 
-    handleStartExam 
-}: any) => {
-    const activeExams = exams.filter((e: any) => e.status === 'active' || user?.role === 'admin');
-    const monthlyExams = activeExams.filter((e: any) => (e.type || 'monthly') === 'monthly');
-    const trainingExams = activeExams.filter((e: any) => e.type === 'training');
+  const MonthsScreen = () => {
+    // تصفية الامتحانات بناءً على النوع
+    const monthlyExams = exams.filter(e => (e.type || 'monthly') === 'monthly');
+    const trainingExams = exams.filter(e => e.type === 'training');
     const currentList = categoryTab === 'monthly' ? monthlyExams : trainingExams;
 
     return (
-        <div className="p-6 sm:p-12 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-12 min-h-full font-alfa overscroll-none" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <div className="p-6 sm:p-12 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-12 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
              <header className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-alfa-blue p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue via-alfa-neon-blue/20 to-alfa-blue" />
                 <div className="flex items-center gap-4 relative z-10 w-full sm:w-auto">
                     <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-16 sm:h-16 bg-white/10 flex items-center justify-center rounded-xl sm:rounded-2xl shadow-lg border border-white/20 text-white active:scale-95 transition-all">
-                        <ArrowLeft className={`w-5 h-5 sm:w-8 sm:h-8 ${lang === 'ar' ? 'rotate-180' : ''}`} />
+                        <ArrowLeft className={`w-5 h-5 sm:w-8 sm:h-8 ${isRtl ? 'rotate-180' : ''}`} />
                     </button>
                     <h1 className="text-xl sm:text-3xl font-black text-white tracking-tighter uppercase font-logo">📅 {text.months}</h1>
                 </div>
                 
                 <div className="flex bg-white/10 rounded-2xl p-1.5 border border-white/20 relative z-10 w-full sm:w-auto">
-                    <button onClick={() => setCategoryTab('monthly')} className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'monthly' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}>{text.monthlyExams}</button>
-                    <button onClick={() => setCategoryTab('training')} className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'training' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}>{text.training}</button>
+                    <button 
+                        onClick={() => setCategoryTab('monthly')}
+                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'monthly' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}
+                    >
+                        {text.monthlyExams}
+                    </button>
+                    <button 
+                        onClick={() => setCategoryTab('training')}
+                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all ${categoryTab === 'training' ? 'bg-white text-alfa-blue shadow-xl' : 'text-white/60 hover:text-white'}`}
+                    >
+                        {text.training}
+                    </button>
                 </div>
             </header>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 flex-1 overflow-y-auto pb-6 px-1 overscroll-contain">
                 {currentList.length === 0 ? (
-                    <div className="col-span-full py-20 text-center opacity-40"><p className="font-black uppercase tracking-widest">{lang === 'ar' ? 'لا توجد اختبارات حالياً' : 'No Exams Available'}</p></div>
+                    <div className="col-span-full py-20 text-center opacity-40">
+                        <p className="font-black uppercase tracking-widest">{lang === 'ar' ? 'لا توجد اختبارات حالياً' : 'No Exams Available'}</p>
+                    </div>
                 ) : (
-                    currentList.map((m: any) => {
-                        const hasFinished = (user?.examResults || []).some((r: any) => r.examId === m.id);
+                    currentList.map(m => {
+                        const hasFinished = (user?.examResults || []).some(r => r.examId === m.id);
                         const isAllowedRetake = (user?.allowedRetakes || []).includes(m.id);
                         const isDisabled = m.status === 'locked' || (hasFinished && !isAllowedRetake && user?.role !== 'admin');
 
@@ -933,10 +961,12 @@ const MonthsScreen = ({
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-alfa-neon-blue/5 blur-3xl rounded-full -mr-12 -mt-12 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 <div className="flex justify-between items-start relative z-10">
                                     <span className="text-2xl sm:text-5xl font-black text-alfa-blue/5 font-logo italic group-hover:text-alfa-neon-blue/8 transition-colors tracking-tighter">{m.id}</span>
-                                    {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue" /></div>}
+                                    {m.status === 'locked' ? <Lock className="w-4 h-4 sm:w-6 sm:h-6 opacity-20" /> : <div className="p-1.5 sm:p-3 bg-alfa-neon-blue/5 rounded-xl group-hover:bg-alfa-neon-blue/10 transition-colors shadow-inner"><Shield className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-alfa-blue group-hover:text-alfa-neon-blue transition-colors" /></div>}
                                 </div>
                                 <div className="relative z-10">
-                                    <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">{lang === 'ar' ? (m.name?.ar || m.name_ar) : (m.name?.en || m.name_en)}</h3>
+                                    <h3 className="font-black text-sm sm:text-2xl text-alfa-blue leading-tight tracking-tight uppercase group-hover:text-alfa-neon-blue transition-colors">
+                                        {lang === 'ar' ? (m.name?.ar || m.name_ar) : (m.name?.en || m.name_en)}
+                                    </h3>
                                     <p className={`text-[8px] sm:text-[11px] font-black uppercase tracking-[0.2em] mt-1 sm:mt-2 ${hasFinished ? 'text-emerald-500' : 'text-alfa-blue/40 font-logo'}`}>
                                         {hasFinished ? (isAllowedRetake ? (lang === 'ar' ? 'متاح للإعادة' : 'Retake Available') : (lang === 'ar' ? 'تم الانتهاء' : 'Completed')) : (m.status === 'locked' ? 'Locked' : 'Available')}
                                     </p>
@@ -948,9 +978,9 @@ const MonthsScreen = ({
             </div>
         </div>
     );
-};
+  };
 
-  const ResultScreen = ({ activeExam, answers, text, lang, setScreen, calculateResultData, isRtl }: any) => {
+  const ResultScreen = () => {
     const { score, earned, total } = calculateResultData();
     const passed = score >= 50;
 
@@ -1045,10 +1075,9 @@ const MonthsScreen = ({
             </motion.div>
         </div>
     );
-};
+  };
 
-// --- Review Screen ---
-const ReviewScreen = ({ activeExam, getExamQuestions, answers, text, lang, setScreen, isRtl }: any) => {
+  const ReviewScreen = () => {
     if (!activeExam) return null;
     const examQs = getExamQuestions(activeExam);
     return (
@@ -1060,7 +1089,7 @@ const ReviewScreen = ({ activeExam, getExamQuestions, answers, text, lang, setSc
         <h1 className="text-2xl font-black text-alfa-blue">{text.review}</h1>
       </header>
       <div className="space-y-6 overflow-y-auto max-h-[70vh] px-1 pb-10">
-        {examQs.map((q: any, i: number) => {
+        {examQs.map((q, i) => {
           const isCorrect = answers[q.id] === q.correctAnswer;
           return (
             <AlfaCard key={q.id} title={`${lang === 'ar' ? 'السؤال' : 'Question'} ${i + 1}`} className="border-white/80">
@@ -1086,13 +1115,12 @@ const ReviewScreen = ({ activeExam, getExamQuestions, answers, text, lang, setSc
   );
 };
 
-// --- Admin Results Screen ---
-const AdminResults = ({ users, exams, MOCK_REGIONS, lang, setScreen, isRtl, toggleRetake }: any) => {
+const AdminResults = () => {
     const exportToCSV = () => {
         const headers = ["Region,Name,Employee ID,Total Score,Exams Taken\n"];
         const rows = [...MOCK_REGIONS].flatMap(region => {
-            const regionUsers = users.filter((u: any) => u.role === 'user' && u.region === region.id);
-            return regionUsers.map((u: any) => `${lang === 'ar' ? region.name.ar : region.name.en},${u.name},${u.employeeId},${u.totalScore},${(u.examResults || []).length}\n`);
+            const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
+            return regionUsers.map(u => `${lang === 'ar' ? region.name.ar : region.name.en},${u.name},${u.employeeId},${u.totalScore},${(u.examResults || []).length}\n`);
         });
         
         const blob = new Blob([...headers, ...rows], { type: 'text/csv' });
@@ -1125,12 +1153,12 @@ const AdminResults = ({ users, exams, MOCK_REGIONS, lang, setScreen, isRtl, togg
         </header>
 
             <div className="space-y-12">
-                {MOCK_REGIONS.map((region: any) => {
-                    const regionUsers = users.filter((u: any) => u.role === 'user' && u.region === region.id);
+                {MOCK_REGIONS.map(region => {
+                    const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
                     if (regionUsers.length === 0) return null;
                     
                     const avgScore = regionUsers.length > 0 
-                        ? Math.round(regionUsers.reduce((acc: number, u: any) => acc + (u.lastScore || 0), 0) / regionUsers.length) 
+                        ? Math.round(regionUsers.reduce((acc, u) => acc + (u.lastScore || 0), 0) / regionUsers.length) 
                         : 0;
 
                     return (
@@ -1158,8 +1186,9 @@ const AdminResults = ({ users, exams, MOCK_REGIONS, lang, setScreen, isRtl, togg
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-alfa-blue/5">
-                                            {regionUsers.sort((a: any, b: any) => b.totalScore - a.totalScore).map((u: any) => {
+                                            {regionUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => {
                                                 const uResults = u.examResults || [];
+                                                const lastResult = uResults[uResults.length - 1];
                                                 return (
                                                     <tr key={u.id} className="hover:bg-alfa-blue/[0.02] transition-colors">
                                                         <td className="px-6 py-4">
@@ -1172,9 +1201,9 @@ const AdminResults = ({ users, exams, MOCK_REGIONS, lang, setScreen, isRtl, togg
                                                         <td className="px-6 py-4 text-center">
                                                             <div className="flex flex-col gap-1 items-center">
                                                                 {(u.examResults || []).length > 0 ? (
-                                                                    (u.examResults || []).map((res: any) => {
+                                                                    (u.examResults || []).map(res => {
                                                                         const isAllowed = (u.allowedRetakes || []).includes(res.examId);
-                                                                        const exName = exams.find((e: any) => e.id === res.examId)?.name[lang as 'ar'|'en'] || 'Exam';
+                                                                        const exName = exams.find(e => e.id === res.examId)?.name[lang as 'ar'|'en'] || 'Exam';
                                                                         return (
                                                                             <div key={res.examId} className="flex items-center gap-2 bg-alfa-blue/5 p-2 rounded-lg w-full justify-between min-w-[120px]">
                                                                                 <div className="flex flex-col items-start px-2">
@@ -1213,7 +1242,7 @@ const AdminResults = ({ users, exams, MOCK_REGIONS, lang, setScreen, isRtl, togg
             <AlfaCard title={lang === 'ar' ? 'مساهمة المناطق' : 'Regional Share'}>
                 <div className="h-64 sm:h-80 w-full mt-6">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={MOCK_REGIONS.map((r: any) => ({ name: lang === 'ar' ? r.name.ar : r.name.en, score: users.filter((u: any) => u.region === r.id).reduce((acc: number, u: any) => acc + u.totalScore, 0) }))}>
+                        <AreaChart data={MOCK_REGIONS.map(r => ({ name: lang === 'ar' ? r.name.ar : r.name.en, score: users.filter(u => u.region === r.id).reduce((acc, u) => acc + u.totalScore, 0) }))}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#00285510" />
                             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
                             <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
@@ -1227,8 +1256,7 @@ const AdminResults = ({ users, exams, MOCK_REGIONS, lang, setScreen, isRtl, togg
     );
 };
 
-// --- Admin Dashboard Screen ---
-const AdminDashboard = ({ text, lang, setScreen, users, exams, questions, MOCK_PROGRESS, isRtl }: any) => (
+  const AdminDashboard = () => (
     <div className="p-3 sm:p-10 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-10 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 shrink-0 bg-white/30 backdrop-blur-xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[3.5rem] border border-alfa-neon-blue/10 shadow-lg">
             <div className="flex flex-col">
@@ -1273,10 +1301,9 @@ const AdminDashboard = ({ text, lang, setScreen, users, exams, questions, MOCK_P
              </div>
         </AlfaCard>
     </div>
-);
+  );
 
-// --- Admin Users Screen ---
-const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: any) => {
+  const AdminUsers = () => {
     const [name, setName] = useState('');
     const [empId, setEmpId] = useState('');
     const [pass, setPass] = useState('');
@@ -1288,7 +1315,7 @@ const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: a
     const handleSaveUser = () => {
       if (!name || !empId) return;
       if (editingUserId) {
-          setUsers(users.map((u: any) => u.id === editingUserId ? { ...u, name, employeeId: empId, role, region: regionId } : u));
+          setUsers(users.map(u => u.id === editingUserId ? { ...u, name, employeeId: empId, role, region: regionId } : u));
       } else {
           const newUser: UserData = {
             id: Math.random().toString(36).substr(2, 9),
@@ -1308,7 +1335,7 @@ const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: a
 
     const deleteUser = (id: string) => {
         if (id === 'admin') return;
-        setUsers(users.filter((u: any) => u.id !== id));
+        setUsers(users.filter(u => u.id !== id));
     };
 
     const startEdit = (u: UserData) => {
@@ -1345,13 +1372,13 @@ const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: a
                         <button onClick={() => setShowForm(false)} className="text-alfa-red p-2"><XCircle className="w-6 h-6" /></button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                          <AlfaInput label={lang === 'ar' ? 'الأسم' : 'Name'} value={name} onChange={(e: any) => setName(e.target.value)} className="h-14 sm:h-16" />
-                          <AlfaInput label={lang === 'ar' ? 'كود الموظف' : 'Employee ID'} value={empId} onChange={(e: any) => setEmpId(e.target.value)} className="h-14 sm:h-16" />
+                          <AlfaInput label={lang === 'ar' ? 'الأسم' : 'Name'} value={name} onChange={(e) => setName(e.target.value)} className="h-14 sm:h-16" />
+                          <AlfaInput label={lang === 'ar' ? 'كود الموظف' : 'Employee ID'} value={empId} onChange={(e) => setEmpId(e.target.value)} className="h-14 sm:h-16" />
                           
                           <div className="flex flex-col gap-1.5">
                               <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'المنطقة' : 'Region'}</label>
-                              <select value={regionId} onChange={(e: any) => setRegionId(e.target.value)} className="h-[55px] sm:h-[65px] alfa-glass border-alfa-neon-blue/10 rounded-2xl px-6 font-black text-alfa-blue outline-none text-sm">
-                                  {MOCK_REGIONS.map((r: any) => (
+                              <select value={regionId} onChange={(e) => setRegionId(e.target.value)} className="h-[55px] sm:h-[65px] alfa-glass border-alfa-neon-blue/10 rounded-2xl px-6 font-black text-alfa-blue outline-none text-sm">
+                                  {MOCK_REGIONS.map(r => (
                                       <option key={r.id} value={r.id}>{lang === 'ar' ? `${r.name.ar} (${r.password})` : `${r.name.en} (${r.password})`}</option>
                                   ))}
                               </select>
@@ -1369,7 +1396,7 @@ const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: a
             </AnimatePresence>
 
             <div className="flex-1 overflow-y-auto min-h-0 py-2 space-y-3 px-1">
-                {users.map((u: any) => (
+                {users.map(u => (
                     <motion.div layout key={u.id} className="alfa-glass rounded-[1.5rem] sm:rounded-[2.5rem] p-3 sm:p-6 flex justify-between items-center transition-all bg-white/40 border-white shadow-xl">
                         <div className="flex items-center gap-3 sm:gap-4">
                             <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center font-black ${u.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-alfa-blue'}`}>
@@ -1378,8 +1405,8 @@ const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: a
                             <div>
                                 <h3 className="font-black text-alfa-blue text-sm sm:text-lg leading-tight uppercase tracking-tight">{u.name}</h3>
                                 <p className="text-[8px] sm:text-[10px] font-black opacity-30 uppercase tracking-[0.2em] mt-0.5 sm:mt-1">
-                                    ID: {u.employeeId} • {MOCK_REGIONS.find((r: any) => r.id === u.region)?.name[lang as 'ar'|'en'] || u.region} 
-                                    <span className="text-alfa-neon-blue ml-2">PASS: {MOCK_REGIONS.find((r: any) => r.id === u.region)?.password}</span>
+                                    ID: {u.employeeId} • {MOCK_REGIONS.find(r => r.id === u.region)?.name[lang as 'ar'|'en'] || u.region} 
+                                    <span className="text-alfa-neon-blue ml-2">PASS: {MOCK_REGIONS.find(r => r.id === u.region)?.password}</span>
                                 </p>
                             </div>
                         </div>
@@ -1392,10 +1419,9 @@ const AdminUsers = ({ users, setUsers, setScreen, MOCK_REGIONS, lang, isRtl }: a
             </div>
         </div>
     );
-};
+  };
 
-// --- Leaderboard Screen ---
-const LeaderboardScreen = ({ users, isRtl, lang, setScreen }: any) => (
+  const LeaderboardScreen = () => (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto flex flex-col gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex items-center gap-4 mb-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue/20" />
@@ -1405,7 +1431,7 @@ const LeaderboardScreen = ({ users, isRtl, lang, setScreen }: any) => (
             <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight relative z-10">{lang === 'ar' ? 'أفضل الموظفين' : 'Top Employees'}</h1>
         </header>
         <div className="space-y-4">
-            {users.filter((u: any) => u.role === 'user').sort((a: any, b: any) => b.totalScore - a.totalScore).map((u: any, i: number) => (
+            {users.filter(u => u.role === 'user').sort((a,b) => b.totalScore - a.totalScore).map((u, i) => (
                 <div key={u.id} className="alfa-glass rounded-[2rem] p-6 flex justify-between items-center bg-white/40 border-white shadow-xl">
                     <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-alfa-blue'}`}>
@@ -1424,7 +1450,7 @@ const LeaderboardScreen = ({ users, isRtl, lang, setScreen }: any) => (
             ))}
         </div>
     </div>
-);
+  );
 
   const StatsScreen = () => (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto flex flex-col gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -1494,14 +1520,13 @@ const LeaderboardScreen = ({ users, isRtl, lang, setScreen }: any) => (
     );
   };
 
-// --- Admin Exams Screen ---
-const AdminExams = ({ exams, setExams, isRtl, lang, setScreen, supabase, setEditingExam }: any) => {
+  const AdminExams = () => {
     const deleteExam = (id: string) => {
-        setExams(exams.filter((e: any) => e.id !== id));
+        setExams(exams.filter(e => e.id !== id));
     };
 
     const toggleExam = (id: string) => {
-        setExams(exams.map((e: any) => e.id === id ? { ...e, status: e.status === 'active' ? 'locked' : 'active' } : e));
+        setExams(exams.map(e => e.id === id ? { ...e, status: e.status === 'active' ? 'locked' : 'active' } : e));
     };
 
     return (
@@ -1553,7 +1578,7 @@ const AdminExams = ({ exams, setExams, isRtl, lang, setScreen, supabase, setEdit
                             <Zap className="w-5 h-5 mr-2" /> {lang === 'ar' ? 'إنشاء اختبار تجريبي الآن' : 'Create Demo Exam Row'}
                         </AlfaButton>
                     </div>
-                ) : exams.map((e: any) => (
+                ) : exams.map(e => (
                     <AlfaCard key={e.id} className="relative group overflow-hidden border-white/80 p-6 rounded-[2.5rem]">
                         <div className="flex justify-between items-start mb-4">
                             <div>
@@ -1567,7 +1592,7 @@ const AdminExams = ({ exams, setExams, isRtl, lang, setScreen, supabase, setEdit
 
                         <div className="flex flex-wrap gap-3 mb-6">
                             <div className="flex items-center gap-1.5 text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest"><Timer className="w-3.5 h-3.5" /> {e.duration / 60}m</div>
-                            <div className="flex items-center gap-1.5 text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest"><List className="w-3.5 h-3.5" /> {(e.questions || []).length} Qs</div>
+                            <div className="flex items-center gap-1.5 text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest"><List className="w-3.5 h-3.5" /> {e.questions.length} Qs</div>
                         </div>
 
                         <div className="flex gap-2">
@@ -1579,10 +1604,9 @@ const AdminExams = ({ exams, setExams, isRtl, lang, setScreen, supabase, setEdit
             </div>
         </div>
     );
-};
+  };
 
-// --- Admin Exam Edit Screen ---
-const AdminExamEdit = ({ editingExam, setEditingExam, exams, setExams, isRtl, lang, setScreen, text, questions }: any) => {
+  const AdminExamEdit = () => {
     const [arName, setArName] = useState(editingExam?.name.ar || '');
     const [enName, setEnName] = useState(editingExam?.name.en || '');
     const [duration, setDuration] = useState(editingExam?.duration || 300);
@@ -1606,7 +1630,7 @@ const AdminExamEdit = ({ editingExam, setEditingExam, exams, setExams, isRtl, la
         };
 
         if (editingExam) {
-            setExams(exams.map((e: any) => e.id === id ? updatedExam : e));
+            setExams(exams.map(e => e.id === id ? updatedExam : e));
         } else {
             setExams([...exams, updatedExam]);
         }
@@ -1640,15 +1664,15 @@ const AdminExamEdit = ({ editingExam, setEditingExam, exams, setExams, isRtl, la
                                 </button>
                             </div>
                             {examType === 'training' && (
-                                <AlfaInput label={text.groupName} value={groupName} onChange={(e: any) => setGroupName(e.target.value)} />
+                                <AlfaInput label={text.groupName} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
                             )}
-                            <AlfaInput label="Arabic Name" value={arName} onChange={(e: any) => setArName(e.target.value)} />
-                            <AlfaInput label="English Name" value={enName} onChange={(e: any) => setEnName(e.target.value)} />
+                            <AlfaInput label="Arabic Name" value={arName} onChange={(e) => setArName(e.target.value)} />
+                            <AlfaInput label="English Name" value={enName} onChange={(e) => setEnName(e.target.value)} />
                             <div className="grid grid-cols-2 gap-4">
-                                <AlfaInput label="Duration (Seconds)" type="number" value={duration.toString()} onChange={(e: any) => setDuration(Number(e.target.value))} />
+                                <AlfaInput label="Duration (Seconds)" type="number" value={duration.toString()} onChange={(e) => setDuration(Number(e.target.value))} />
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] font-black opacity-30 mt-1 uppercase tracking-widest px-2">Total Score</label>
-                                    <AlfaInput label="Total Points" type="number" value={totalPoints.toString()} onChange={(e: any) => setTotalPoints(Number(e.target.value))} />
+                                    <AlfaInput label="Total Points" type="number" value={totalPoints.toString()} onChange={(e) => setTotalPoints(Number(e.target.value))} />
                                 </div>
                             </div>
                         </div>
@@ -1658,7 +1682,7 @@ const AdminExamEdit = ({ editingExam, setEditingExam, exams, setExams, isRtl, la
 
                 <AlfaCard title="Questions Selection" subtitle={`${selectedQs.length} items checked`} className="border-alfa-blue/5 flex flex-col">
                     <div className="space-y-3 overflow-y-auto max-h-[500px] pr-2 mt-4 pb-4">
-                        {questions.map((q: any) => {
+                        {questions.map(q => {
                             const isSelected = selectedQs.includes(q.id);
                             return (
                                 <button key={q.id} onClick={() => setSelectedQs(isSelected ? selectedQs.filter(id => id !== q.id) : [...selectedQs, q.id])} className={`w-full text-start p-5 rounded-[1.5rem] border-2 transition-all duration-300 ${isSelected ? 'bg-alfa-blue text-white shadow-xl border-alfa-blue' : 'alfa-glass text-alfa-blue border-transparent hover:border-white/60'}`}>
@@ -1672,16 +1696,15 @@ const AdminExamEdit = ({ editingExam, setEditingExam, exams, setExams, isRtl, la
             </div>
         </div>
     );
-};
+  };
 
-// --- Admin Questions Screen ---
-const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text }: any) => {
+  const AdminQuestions = () => {
     const [isAddModal, setIsAddModal] = useState(false);
     const [newQ, setNewQ] = useState<Partial<Question>>({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 5 });
     const [mcOptions, setMcOptions] = useState(['', '', '']);
 
     const deleteQuestion = (id: string) => {
-        setQuestions(questions.filter((q: any) => q.id !== id));
+        setQuestions(questions.filter(q => q.id !== id));
     };
 
     const addQuestion = () => {
@@ -1722,11 +1745,11 @@ const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text 
                         <motion.div initial={{ x: 300 }} animate={{ x: 0 }} exit={{ x: 300 }} className="h-full w-full max-w-md alfa-glass rounded-[2.5rem] p-8 overflow-y-auto shadow-[0_0_50px_rgba(0,40,85,0.15)] border-l-2 border-l-alfa-blue/20">
                             <h2 className="text-2xl font-black text-alfa-blue mb-8 tracking-tight">{lang === 'ar' ? 'إضافة سؤال جديد' : 'Add Question'}</h2>
                             <div className="flex flex-col gap-6">
-                                <AlfaInput label={lang === 'ar' ? 'نص السؤال (بالعربي)' : 'Question (Arabic)'} value={newQ.text?.ar} onChange={(e: any) => setNewQ({...newQ, text: {ar: e.target.value, en: e.target.value} as any})} />
+                                <AlfaInput label={lang === 'ar' ? 'نص السؤال (بالعربي)' : 'Question (Arabic)'} value={newQ.text?.ar} onChange={(e) => setNewQ({...newQ, text: {ar: e.target.value, en: e.target.value} as any})} />
                                 
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'نوع السؤال' : 'Question Type'}</label>
-                                    <select value={newQ.type} onChange={(e: any) => {
+                                    <select value={newQ.type} onChange={(e) => {
                                         const type = e.target.value as any;
                                         setNewQ({...newQ, type, correctAnswer: type === 'tf' ? 'True' : ''});
                                     }} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
@@ -1739,7 +1762,7 @@ const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text 
                                     <div className="space-y-4 p-4 rounded-3xl bg-alfa-blue/5 border border-alfa-blue/10">
                                         <p className="text-[10px] font-black opacity-30 uppercase tracking-widest text-center">{lang === 'ar' ? 'الخيارات المتاحة' : 'Options'}</p>
                                         {mcOptions.map((opt, i) => (
-                                            <AlfaInput key={i} label={`${lang === 'ar' ? 'الخيار' : 'Option'} ${i + 1}`} value={opt} onChange={(e: any) => {
+                                            <AlfaInput key={i} label={`${lang === 'ar' ? 'الخيار' : 'Option'} ${i + 1}`} value={opt} onChange={(e) => {
                                                 const newOps = [...mcOptions];
                                                 newOps[i] = e.target.value;
                                                 setMcOptions(newOps);
@@ -1751,18 +1774,18 @@ const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text 
                                 )}
 
                                 <div className="space-y-2">
-                                    <AlfaInput label={lang === 'ar' ? 'الدرجة' : 'Score Points'} type="number" value={newQ.points?.toString()} onChange={(e: any) => setNewQ({...newQ, points: Number(e.target.value)})} />
+                                    <AlfaInput label={lang === 'ar' ? 'الدرجة' : 'Score Points'} type="number" value={newQ.points?.toString()} onChange={(e) => setNewQ({...newQ, points: Number(e.target.value)})} />
                                 </div>
 
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'الإجابة الصحيحة' : 'Correct Answer'}</label>
                                     {newQ.type === 'tf' ? (
-                                        <select value={newQ.correctAnswer} onChange={(e: any) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
+                                        <select value={newQ.correctAnswer} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
                                             <option value="True">{lang === 'ar' ? 'صح' : 'True'}</option>
                                             <option value="False">{lang === 'ar' ? 'خطأ' : 'False'}</option>
                                         </select>
                                     ) : (
-                                        <select value={newQ.correctAnswer} onChange={(e: any) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
+                                        <select value={newQ.correctAnswer} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
                                             <option value="" disabled>{lang === 'ar' ? 'اختر الإجابة' : 'Select answer'}</option>
                                             {mcOptions.filter(o => o.trim()).map((opt, i) => (
                                                 <option key={i} value={opt}>{opt}</option>
@@ -1782,7 +1805,7 @@ const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text 
             </AnimatePresence>
 
             <div className="grid grid-cols-1 gap-4">
-                {questions.map((q: any) => (
+                {questions.map(q => (
                     <AlfaCard key={q.id} className="relative border-white shadow-xl rounded-[2.5rem] p-6">
                         <div className="flex justify-between items-start mb-4">
                              <div>
@@ -1794,7 +1817,7 @@ const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text 
                              </button>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            {(lang === 'ar' ? q.options?.ar : q.options?.en || [text.true, text.false])?.map((opt: string) => (
+                            {(lang === 'ar' ? q.options?.ar : q.options?.en || [text.true, text.false])?.map(opt => (
                                 <div key={opt} className={`px-4 py-2 rounded-lg text-xs font-black border ${opt === q.correctAnswer || (q.type === 'tf' && (opt === text.true ? 'True' : 'False') === q.correctAnswer) ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-white/40 border-transparent opacity-40'}`}>
                                     {opt}
                                 </div>
@@ -1805,7 +1828,7 @@ const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text 
             </div>
         </div>
     );
-};
+  };
 
 
   const ExamScreenProxy = () => (
@@ -1829,111 +1852,20 @@ const AdminQuestions = ({ questions, setQuestions, isRtl, lang, setScreen, text 
     <div className="h-screen w-full flex flex-col select-none bg-alfa-bg text-alfa-text alfa-app-border overflow-hidden">
        <main className="flex-1 overflow-y-auto w-full relative">
            <AnimatePresence mode="wait">
-            {screen === 'login' && (
-                <LoginScreen 
-                    key="login" 
-                    isRtl={isRtl} lang={lang} setLang={setLang} text={text} 
-                    dbStatus={dbStatus} handleLogin={handleLogin} 
-                    selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion} 
-                    MOCK_REGIONS={MOCK_REGIONS} supabase={supabase} 
-                />
-            )}
-            {screen === 'dashboard' && (
-                <DashboardScreen 
-                    key="dashboard"
-                    user={user} text={text} lang={lang} 
-                    setScreen={setScreen} setLang={setLang} 
-                    users={users} MOCK_PROGRESS={MOCK_PROGRESS} 
-                />
-            )}
-            {screen === 'months' && (
-                <MonthsScreen 
-                    key="months"
-                    user={user} exams={exams} lang={lang} isRtl={isRtl} 
-                    setScreen={setScreen} setActiveExam={setActiveExam} 
-                    setSelectedMonth={setSelectedMonth} 
-                    filteredExams={filteredExams} currentMonthExams={currentMonthExams} 
-                    monthsNames={monthsNames}
-                />
-            )}
+            {screen === 'login' && <LoginScreen key="login" />}
+            {screen === 'dashboard' && <DashboardScreen key="dashboard" />}
+            {screen === 'months' && <MonthsScreen key="months" />}
             {screen === 'exam' && <ExamScreenProxy key="exam" />}
-            {screen === 'result' && (
-                <ResultScreen 
-                    key="result"
-                    activeExam={activeExam} answers={answers} 
-                    text={text} lang={lang} setScreen={setScreen} 
-                    calculateResultData={calculateResultData} isRtl={isRtl}
-                />
-            )}
-            {screen === 'review' && (
-                <ReviewScreen 
-                    key="review"
-                    activeExam={activeExam} getExamQuestions={getExamQuestions} 
-                    answers={answers} text={text} lang={lang} setScreen={setScreen} 
-                />
-            )}
-            {screen === 'leaderboard' && (
-                <LeaderboardScreen 
-                    key="leaderboard"
-                    users={users} isRtl={isRtl} lang={lang} setScreen={setScreen} 
-                />
-            )}
-            {screen === 'stats' && (
-                <StatsScreen 
-                    key="stats"
-                    isRtl={isRtl} setScreen={setScreen} lang={lang} 
-                    users={users} exams={exams} questions={questions} 
-                    results={null /* Results state if needed */} 
-                    MOCK_PROGRESS={MOCK_PROGRESS} 
-                />
-            )}
-            {screen === 'admin_dashboard' && (
-                <AdminDashboard 
-                    key="admin" 
-                    text={text} lang={lang} setScreen={setScreen} 
-                    users={users} exams={exams} questions={questions} 
-                    MOCK_PROGRESS={MOCK_PROGRESS} isRtl={isRtl}
-                />
-            )}
-            {screen === 'admin_users' && (
-                <AdminUsers 
-                    key="admin_users" 
-                    users={users} setUsers={setUsers} setScreen={setScreen} 
-                    MOCK_REGIONS={MOCK_REGIONS} lang={lang} isRtl={isRtl}
-                />
-            )}
-            {screen === 'admin_exams' && (
-                <AdminExams 
-                    key="admin_exams" 
-                    exams={exams} setExams={setExams} isRtl={isRtl} 
-                    lang={lang} setScreen={setScreen} supabase={supabase} 
-                    setEditingExam={setEditingExam} 
-                />
-            )}
-            {screen === 'admin_exam_edit' && (
-                <AdminExamEdit 
-                    key="admin_exam_edit" 
-                    editingExam={editingExam} setEditingExam={setEditingExam} 
-                    exams={exams} setExams={setExams} isRtl={isRtl} 
-                    lang={lang} setScreen={setScreen} text={text} 
-                    questions={questions} 
-                />
-            )}
-            {screen === 'admin_questions' && (
-                <AdminQuestions 
-                    key="admin_questions" 
-                    questions={questions} setQuestions={setQuestions} 
-                    isRtl={isRtl} lang={lang} setScreen={setScreen} text={text} 
-                />
-            )}
-            {screen === 'admin_results' && (
-                <AdminResults 
-                    key="admin_results" 
-                    users={users} exams={exams} MOCK_REGIONS={MOCK_REGIONS} 
-                    lang={lang} setScreen={setScreen} isRtl={isRtl} 
-                    toggleRetake={toggleRetake}
-                />
-            )}
+            {screen === 'result' && <ResultScreen key="result" />}
+            {screen === 'review' && <ReviewScreen key="review" />}
+            {screen === 'leaderboard' && <LeaderboardScreen key="leaderboard" />}
+            {screen === 'stats' && <StatsScreen key="stats" />}
+            {screen === 'admin_dashboard' && <AdminDashboard key="admin" />}
+            {screen === 'admin_users' && <AdminUsers key="admin_users" />}
+            {screen === 'admin_exams' && <AdminExams key="admin_exams" />}
+            {screen === 'admin_exam_edit' && <AdminExamEdit key="admin_exam_edit" />}
+            {screen === 'admin_questions' && <AdminQuestions key="admin_questions" />}
+            {screen === 'admin_results' && <AdminResults key="admin_results" />}
            </AnimatePresence>
        </main>
        
