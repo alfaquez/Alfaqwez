@@ -408,13 +408,24 @@ export default function App() {
 
   const setScreen = (newScreen: Screen, pushHistory: boolean = true) => {
     if (pushHistory) {
-      setScreenHistory(prev => [...prev, screen]);
+      // Don't push to history if we are currently in an exam
+      if (screen !== 'exam') {
+        setScreenHistory(prev => [...prev, screen]);
+        // Push state to browser history
+        window.history.pushState({ screen: newScreen }, "");
+      }
     }
     setScreenState(newScreen);
   };
 
   const goBack = () => {
-    if (screen === 'exam') return; // Don't allow back during exam
+    // Absolutely block navigation during exam
+    if (screen === 'exam') {
+        // Prevent browser back
+        window.history.pushState({ screen: 'exam' }, "");
+        return;
+    }
+    
     if (screenHistory.length > 0) {
       const prevScreen = screenHistory[screenHistory.length - 1];
       setScreenHistory(prev => prev.slice(0, -1));
@@ -423,16 +434,26 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Initial state
+    window.history.replaceState({ screen: 'login' }, "");
+
     const handlePopState = (e: PopStateEvent) => {
-      // Avoid popstate logic if it causes issues on mobile during initial load
+      if (screen === 'exam') {
+        // Re-push state to block back
+        window.history.pushState({ screen: 'exam' }, "");
+        return;
+      }
+      
       if (screenHistory.length > 0) {
-        goBack();
+        const prevScreen = screenHistory[screenHistory.length - 1];
+        setScreenHistory(prev => prev.slice(0, -1));
+        setScreenState(prevScreen);
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [screenHistory]);
+  }, [screenHistory, screen]);
 
   // Stateful Data - Initialize as empty to force DB fetch
   const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
