@@ -65,6 +65,7 @@ interface Question {
   correctAnswer: string;
   category: { ar: string, en: string };
   points: number;
+  examid?: string;
 }
 
 // --- Translations ---
@@ -475,106 +476,108 @@ export default function App() {
   const text = translations[lang];
 
   // Fetch Data from Supabase
-  useEffect(() => {
-    async function fetchData() {
-      setDbStatus({ status: 'syncing' });
-      try {
-        const tableNames = ['exams', 'exam', 'EXAMS'];
-        let examsRaw: any[] = [];
-        let errorToThrow = null;
-        let successfulTable = 'exams';
+  const fetchData = async () => {
+    setDbStatus({ status: 'syncing' });
+    try {
+      const tableNames = ['exams', 'exam', 'EXAMS'];
+      let examsRaw: any[] = [];
+      let errorToThrow = null;
+      let successfulTable = 'exams';
 
-        for (const tName of tableNames) {
-           const { data, error } = await supabase.from(tName).select('*');
-           if (!error && data && data.length > 0) {
-              examsRaw = data;
-              successfulTable = tName;
-              break;
-           }
-           if (error) errorToThrow = error;
-        }
-
-        if (examsRaw.length === 0 && errorToThrow) throw errorToThrow;
-
-        if (examsRaw && examsRaw.length > 0) {
-          const processedExams = examsRaw.map(e => ({
-            ...e,
-            id: String(e.id),
-            name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
-            status: e.status || 'active',
-            type: e.type || 'monthly',
-            duration: e.duration || 300,
-            points: e.points || 100,
-            questions: Array.isArray(e.questions) ? e.questions : [],
-            groupName: e.group_name || e.groupName || ''
-          }));
-          setExams(processedExams);
-          setDbStatus({ status: 'connected', details: `${processedExams.length} Exams from "${successfulTable}"` });
-        } else {
-          setDbStatus({ status: 'empty', details: `Synced with "${successfulTable}", but 0 rows returned. Using Offline Data.` });
-        }
-
-        const { data: questionsData, error: qError } = await supabase.from('questions').select('*');
-        if (qError) console.error("Questions Error:", qError);
-        if (questionsData && questionsData.length > 0) {
-          const mappedQuestions = questionsData.map(q => ({
-            ...q,
-            id: String(q.id),
-            examid: String(q.exam_id || q.examid || q.examId || ''),
-            text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
-            correctAnswer: String(q.correct_answer || q.correctAnswer || q.correctanswer || ''),
-            options: typeof q.options === 'object' ? q.options : { 
-                ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), 
-                en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean) 
-            },
-            points: Number(q.points || 10)
-          }));
-          setQuestions(mappedQuestions as Question[]);
-        }
-
-        const { data: usersData } = await supabase.from('users').select('*');
-        const { data: resultsData } = await supabase.from('results').select('*');
-        
-        if (usersData) {
-          const mappedUsers = usersData.map(u => {
-            const userResults = (resultsData || [])
-              .filter(r => r.user_id === u.id)
-              .map(r => ({
-                examId: String(r.exam_id),
-                score: Number(r.score),
-                rawScore: Number(r.raw_score),
-                maxScore: Number(r.max_score),
-                date: r.created_at || r.date
-              }));
-            
-            // Calculate total score from results if DB total_score is 0 for robustness
-            const dbScore = Number(u.total_score || u.totalScore || 0);
-            const calculatedTotal = userResults.reduce((acc, res) => acc + res.score, 0);
-            const currentTotalScore = dbScore > 0 ? dbScore : calculatedTotal;
-
-            return {
-              ...u,
-              employeeId: u.employee_id || u.employeeId,
-              totalScore: currentTotalScore,
-              lastScore: Number(u.last_score || u.lastScore || 0),
-              examResults: userResults,
-              allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
-            };
-          });
-          setUsers(mappedUsers as UserData[]);
-          
-          // Refresh logged in user data if exists
-          if (user && user.id !== 'admin') {
-            const updatedUser = mappedUsers.find(curr => curr.id === user.id);
-            if (updatedUser) setUser(updatedUser as UserData);
-          }
-        }
-
-      } catch (err: any) {
-        console.error("Fetch Error:", err);
-        setDbStatus({ status: 'error', details: err.message });
+      for (const tName of tableNames) {
+         const { data, error } = await supabase.from(tName).select('*');
+         if (!error && data && data.length > 0) {
+            examsRaw = data;
+            successfulTable = tName;
+            break;
+         }
+         if (error) errorToThrow = error;
       }
+
+      if (examsRaw.length === 0 && errorToThrow) throw errorToThrow;
+
+      if (examsRaw && examsRaw.length > 0) {
+        const processedExams = examsRaw.map(e => ({
+          ...e,
+          id: String(e.id),
+          name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
+          status: e.status || 'active',
+          type: e.type || 'monthly',
+          duration: e.duration || 300,
+          points: e.points || 100,
+          questions: Array.isArray(e.questions) ? e.questions : [],
+          groupName: e.group_name || e.groupName || ''
+        }));
+        setExams(processedExams);
+        setDbStatus({ status: 'connected', details: `${processedExams.length} Exams from "${successfulTable}"` });
+      } else {
+        setDbStatus({ status: 'empty', details: `Synced with "${successfulTable}", but 0 rows returned. Using Offline Data.` });
+      }
+
+      const { data: questionsData, error: qError } = await supabase.from('questions').select('*');
+      if (qError) console.error("Questions Error:", qError);
+      if (questionsData) {
+        const mappedQuestions = questionsData.map(q => ({
+          ...q,
+          id: String(q.id),
+          examid: String(q.exam_id || q.examid || q.examId || ''),
+          text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
+          correctAnswer: String(q.correct_answer || q.correctAnswer || q.correctanswer || ''),
+          category: typeof q.category === 'object' ? q.category : { ar: q.category || 'عام', en: q.category || 'General' },
+          options: typeof q.options === 'object' ? q.options : { 
+              ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean).length > 0 ? [q.option1, q.option2, q.option3, q.option4].filter(Boolean) : (q.type === 'tf' ? ['صح', 'خطأ'] : []), 
+              en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean).length > 0 ? [q.option1, q.option2, q.option3, q.option4].filter(Boolean) : (q.type === 'tf' ? ['True', 'False'] : [])
+          },
+          points: Number(q.points || 10)
+        }));
+        setQuestions(mappedQuestions as Question[]);
+      }
+
+      const { data: usersData } = await supabase.from('users').select('*');
+      const { data: resultsData } = await supabase.from('results').select('*');
+      
+      if (usersData) {
+        const mappedUsers = usersData.map(u => {
+          const userResults = (resultsData || [])
+            .filter(r => r.user_id === u.id)
+            .map(r => ({
+              examId: String(r.exam_id),
+              score: Number(r.score),
+              rawScore: Number(r.raw_score),
+              maxScore: Number(r.max_score),
+              date: r.created_at || r.date
+            }));
+          
+          // Calculate total score from results if DB total_score is 0 for robustness
+          const dbScore = Number(u.total_score || u.totalScore || 0);
+          const calculatedTotal = userResults.reduce((acc, res) => acc + res.score, 0);
+          const currentTotalScore = dbScore > 0 ? dbScore : calculatedTotal;
+
+          return {
+            ...u,
+            employeeId: u.employee_id || u.employeeId,
+            totalScore: currentTotalScore,
+            lastScore: Number(u.last_score || u.lastScore || 0),
+            examResults: userResults,
+            allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
+          };
+        });
+        setUsers(mappedUsers as UserData[]);
+        
+        // Refresh logged in user data if exists
+        if (user && user.id !== 'admin') {
+          const updatedUser = mappedUsers.find(curr => curr.id === user.id);
+          if (updatedUser) setUser(updatedUser as UserData);
+        }
+      }
+
+    } catch (err: any) {
+      console.error("Fetch Error:", err);
+      setDbStatus({ status: 'error', details: err.message });
     }
+  };
+
+  useEffect(() => {
     fetchData();
 
     // Setup Real-time subscriptions
@@ -1663,12 +1666,31 @@ const AdminResults = () => {
   };
 
   const AdminExams = () => {
-    const deleteExam = (id: string) => {
+    const deleteExam = async (id: string) => {
+        if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الاختبار؟' : 'Are you sure you want to delete this exam?')) return;
         setExams(exams.filter(e => e.id !== id));
+        try {
+            const { error } = await supabase.from('exams').delete().eq('id', id);
+            if (error) throw error;
+        } catch (err: any) {
+            alert('Delete Error: ' + err.message);
+            fetchData(); // Rollback local state
+        }
     };
 
-    const toggleExam = (id: string) => {
-        setExams(exams.map(e => e.id === id ? { ...e, status: e.status === 'active' ? 'locked' : 'active' } : e));
+    const toggleExam = async (id: string) => {
+        const exam = exams.find(e => e.id === id);
+        if (!exam) return;
+        const newStatus = exam.status === 'active' ? 'locked' : 'active';
+        setExams(exams.map(e => e.id === id ? { ...e, status: newStatus } : e));
+        
+        try {
+            const { error } = await supabase.from('exams').update({ status: newStatus }).eq('id', id);
+            if (error) throw error;
+        } catch (err: any) {
+            alert('Status Toggle Error: ' + err.message);
+            fetchData();
+        }
     };
 
     return (
@@ -1758,8 +1780,8 @@ const AdminResults = () => {
     const [examType, setExamType] = useState<'monthly' | 'training'>(editingExam?.type || 'monthly');
     const [groupName, setGroupName] = useState(editingExam?.groupName || '');
 
-    const saveExam = () => {
-        const id = editingExam?.id || (exams.length + 1).toString();
+    const saveExam = async () => {
+        const id = editingExam?.id || 'ex' + Date.now();
         const updatedExam: ExamMonth = {
             id,
             name: { ar: arName, en: enName },
@@ -1771,13 +1793,32 @@ const AdminResults = () => {
             groupName
         };
 
-        if (editingExam) {
-            setExams(exams.map(e => e.id === id ? updatedExam : e));
-        } else {
-            setExams([...exams, updatedExam]);
+        const dbPayload = {
+            id,
+            name: updatedExam.name,
+            duration: updatedExam.duration,
+            status: updatedExam.status,
+            questions: updatedExam.questions,
+            points: updatedExam.points,
+            type: updatedExam.type,
+            group_name: updatedExam.groupName
+        };
+
+        try {
+            if (editingExam) {
+                const { error } = await supabase.from('exams').update(dbPayload).eq('id', id);
+                if (error) throw error;
+                setExams(exams.map(e => e.id === id ? updatedExam : e));
+            } else {
+                const { error } = await supabase.from('exams').insert([dbPayload]);
+                if (error) throw error;
+                setExams([...exams, updatedExam]);
+            }
+            setEditingExam(null);
+            setScreen('admin_exams');
+        } catch (err: any) {
+            alert(lang === 'ar' ? 'فشل حفظ الاختبار: ' : 'Save Exam Failed: ' + err.message);
         }
-        setEditingExam(null);
-        setScreen('admin_exams');
     };
 
     return (
@@ -1846,47 +1887,64 @@ const AdminResults = () => {
   const [newQ, setNewQ] = useState<Partial<Question>>({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 5 });
   const [mcOptions, setMcOptions] = useState(['', '', '']);
 
-    const deleteQuestion = (id: string) => {
+    const [isSaving, setIsSaving] = useState(false);
+
+    const deleteQuestion = async (id: string) => {
+        if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا السؤال؟' : 'Double check: Delete this question?')) return;
         setQuestions(questions.filter(q => q.id !== id));
+        try {
+            const { error } = await supabase.from('questions').delete().eq('id', id);
+            if (error) throw error;
+        } catch (err: any) {
+            alert('Delete Question Error: ' + err.message);
+            fetchData();
+        }
     };
 
     const addQuestion = async () => {
         if (!newQ.text?.ar || !newQ.correctAnswer) return;
+        setIsSaving(true);
         
         let savedQ: Question;
-        if (editingQ) {
-            // Update
-            savedQ = { ...editingQ, ...newQ, options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined } as Question;
-            setQuestions(questions.map(q => q.id === editingQ.id ? savedQ : q));
-             const { error } = await supabase.from('questions').update({
-                text: savedQ.text,
-                type: savedQ.type,
-                correctAnswer: savedQ.correctAnswer,
-                category: savedQ.category,
-                points: savedQ.points,
-                options: savedQ.options
-            }).eq('id', savedQ.id);
-            if (error) console.error("Error updating question:", error);
-        } else {
-            // New
-            savedQ = {
-                id: 'q' + Date.now(),
-                text: newQ.text as any,
-                type: newQ.type as any,
-                correctAnswer: newQ.correctAnswer,
-                category: newQ.category as any,
-                points: newQ.points || 0,
-                options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined
-            };
-            setQuestions([...questions, savedQ]);
-            const { error } = await supabase.from('questions').insert([savedQ]);
-            if (error) console.error("Error adding question:", error);
+        const id = editingQ ? editingQ.id : 'q' + Date.now();
+        savedQ = { 
+            id, 
+            ...newQ, 
+            options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined 
+        } as Question;
+
+        const dbPayload = {
+            id: savedQ.id,
+            text: savedQ.text,
+            type: savedQ.type,
+            correct_answer: savedQ.correctAnswer,
+            correctAnswer: savedQ.correctAnswer, // Send both for flexibility
+            category: savedQ.category,
+            points: savedQ.points,
+            options: savedQ.options,
+            exam_id: savedQ.examid || ''
+        };
+
+        try {
+            if (editingQ) {
+                const { error } = await supabase.from('questions').update(dbPayload).eq('id', id);
+                if (error) throw error;
+                setQuestions(questions.map(q => q.id === id ? savedQ : q));
+            } else {
+                const { error } = await supabase.from('questions').insert([dbPayload]);
+                if (error) throw error;
+                setQuestions([...questions, savedQ]);
+            }
+            setIsAddModal(false);
+            setEditingQ(null);
+            setNewQ({ type: 'mc', category: { ar: 'عام', en: 'General' } });
+            setMcOptions(['', '', '']);
+        } catch (err: any) {
+            alert(lang === 'ar' ? 'حدث خطأ أثناء الحفظ: ' : 'Save Question Error: ' + err.message);
+            console.error("Save Question Error:", err);
+        } finally {
+            setIsSaving(false);
         }
-        
-        setIsAddModal(false);
-        setEditingQ(null);
-        setNewQ({ type: 'mc', category: { ar: 'عام', en: 'General' } });
-        setMcOptions(['', '', '']);
     };
     
     const openEdit = (q: Question) => {
@@ -1967,8 +2025,14 @@ const AdminResults = () => {
                                 </div>
 
                                 <div className="flex flex-col gap-3 mt-8">
-                                    <AlfaButton onClick={addQuestion} className="w-full h-14 shadow-lg">{lang === 'ar' ? 'حفظ السؤال' : 'Save Question'}</AlfaButton>
-                                    <AlfaButton variant="outline" onClick={() => setIsAddModal(false)} className="w-full h-14 opacity-50">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</AlfaButton>
+                                    <AlfaButton 
+                                        disabled={isSaving}
+                                        onClick={addQuestion} 
+                                        className="w-full h-14 shadow-lg"
+                                    >
+                                        {isSaving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ السؤال' : 'Save Question')}
+                                    </AlfaButton>
+                                    <AlfaButton variant="outline" onClick={() => { setIsAddModal(false); setEditingQ(null); }} className="w-full h-14 opacity-50">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</AlfaButton>
                                 </div>
                             </div>
                         </motion.div>
