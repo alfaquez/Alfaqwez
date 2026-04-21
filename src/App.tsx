@@ -688,18 +688,32 @@ export default function App() {
     setScreen('exam');
   };
 
-  const toggleRetake = (userId: string, examId: string) => {
+  const toggleRetake = async (userId: string, examId: string) => {
+    // 1. Update Locally
+    let finalRetakes: string[] = [];
     setUsers(users.map(u => {
         if (u.id === userId) {
             const retakes = u.allowedRetakes || [];
             if (retakes.includes(examId)) {
-                return { ...u, allowedRetakes: retakes.filter(id => id !== examId) };
+                finalRetakes = retakes.filter(id => id !== examId);
             } else {
-                return { ...u, allowedRetakes: [...retakes, examId] };
+                finalRetakes = [...retakes, examId];
             }
+            return { ...u, allowedRetakes: finalRetakes };
         }
         return u;
     }));
+
+    // 2. Persist to Supabase
+    try {
+        const { error } = await supabase
+            .from('users')
+            .update({ allowed_retakes: finalRetakes })
+            .eq('id', userId);
+        if (error) console.error("Error updating allowed retakes:", error);
+    } catch (err) {
+        console.error("Supabase Error toggleRetake:", err);
+    }
   };
 
   const calculateScore = () => {
@@ -1316,84 +1330,97 @@ const AdminResults = () => {
     );
 };
 
-  const AdminDashboard = () => (
-    <div className="p-3 sm:p-10 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-10 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 shrink-0 bg-white/30 backdrop-blur-xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[3.5rem] border border-alfa-neon-blue/10 shadow-lg">
-            <div className="flex flex-col">
-              <h1 className="text-2xl sm:text-4xl font-black text-alfa-blue tracking-tighter uppercase font-logo">{text.adminPanel}</h1>
-              <p className="text-[10px] sm:text-xs font-black opacity-30 uppercase tracking-[0.4em] mt-1">System Core Interface</p>
-            </div>
-            <div className="flex gap-3">
-                <AlfaButton variant="outline" onClick={() => setScreen('dashboard')} className="h-12 sm:h-16 px-6 sm:px-10 !rounded-2xl sm:!rounded-3xl border-alfa-neon-blue/20 text-alfa-blue">{text.back}</AlfaButton>
-                <AlfaButton variant="danger" onClick={() => setScreen('login')} className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center !p-0 !rounded-2xl sm:!rounded-3xl shadow-neon-red border-alfa-neon-red/30"><LogOut className="w-6 h-6 sm:w-8 sm:h-8" /></AlfaButton>
-            </div>
-        </header>
+  const AdminDashboard = () => {
+    // Calculate real stats from actual data
+    const totalUsers = users.length;
+    const totalResults = users.reduce((acc, u) => acc + (u.examResults?.length || 0), 0);
+    const averageGlobalScore = users.length > 0 
+        ? Math.round(users.reduce((acc, u) => acc + (u.totalScore || 0), 0) / (totalResults || 1)) 
+        : 0;
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 shrink-0">
-            {[
-              { scr: 'admin_users', icon: User, title: lang === 'ar' ? '👥 إدارة المستخدمين' : '👥 Users', desc: `${users.length} Active Node`, color: 'alfa-neon-blue' },
-              { scr: 'admin_exams', icon: ClipboardList, title: lang === 'ar' ? '📝 إدارة الاختبارات' : '📝 Exams', desc: `${exams.length} Modules`, color: 'emerald-500' },
-              { scr: 'admin_questions', icon: List, title: lang === 'ar' ? '📚 بنك الأسئلة' : '📚 Library', desc: `${questions.length} Entry`, color: 'amber-500' },
-              { scr: 'admin_results', icon: BarChart3, title: lang === 'ar' ? '📊 تقارير النتائج' : '📊 Telemetry', desc: 'Archive Access', color: 'purple-500' },
-            ].map((btn, i) => (
-              <button key={i} onClick={() => setScreen(btn.scr as any)} className="group text-start p-0 outline-none">
-                <AlfaCard className={`h-full border-transparent group-hover:border-${btn.color}/30 transition-all duration-500 flex flex-col items-center py-6 sm:py-10 shadow-xl group-hover:shadow-[0_20px_50px_rgba(0,112,243,0.15)] group-active:scale-95`}>
-                    <div className={`w-12 h-12 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-${btn.color}/5 flex items-center justify-center mb-4 border border-${btn.color}/10 group-hover:scale-110 transition-transform`}>
-                        <btn.icon className={`w-6 h-6 sm:w-10 sm:h-10 text-${btn.color}/60 group-hover:text-${btn.color} transition-colors`} />
-                    </div>
-                    <h3 className="font-black text-alfa-blue text-[11px] sm:text-xl uppercase tracking-tight group-hover:text-alfa-neon-blue">{btn.title}</h3>
-                    <p className="text-[7px] sm:text-xs font-black opacity-20 mt-1 uppercase tracking-widest group-hover:opacity-40">{btn.desc}</p>
-                </AlfaCard>
-              </button>
-            ))}
-        </div>
-
-        <AlfaCard title="Network Activity Telemetry" subtitle="REALTIME ANALYTICS" className="flex-1 min-h-0 bg-alfa-blue/[0.02] p-4 sm:p-10 relative">
-             <div className="h-full w-full min-h-[150px]">
-               <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={MOCK_PROGRESS}>
-                    <XAxis dataKey="name" hide />
-                    <YAxis hide />
-                    <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.15)', fontStyle: 'normal', fontWeight: '900' }} />
-                    <Area type="monotone" dataKey="score" stroke="#0070f3" strokeWidth={5} fill="#0070f3" fillOpacity={0.08} />
-                  </AreaChart>
-               </ResponsiveContainer>
-             </div>
-             
-             {/* Radical Database Solution: Maintenance Actions */}
-             <div className="absolute top-4 right-4 flex gap-2">
-                <button 
-                  onClick={async () => {
-                    if (!confirm('Are you sure you want to initialize the database with sample data? This will add initial exams and questions.')) return;
-                    setDbStatus({ status: 'syncing', details: 'Seeding Database...' });
-                    try {
-                      const { error: exErr } = await supabase.from('exams').insert([
-                        { id: '1', name: { ar: 'يناير 2026', en: 'January 2026' }, status: 'active', duration: 1800, questions: ['q1', 'q2'], points: 100, type: 'monthly' }
-                      ]);
-                      if (exErr) throw exErr;
-
-                      const { error: qErr } = await supabase.from('questions').insert([
-                        { id: 'q1', examid: '1', text: { ar: 'هل يجب غسل اليدين قبل سحب العينة؟', en: 'Wash hands before sampling?' }, type: 'tf', correctAnswer: 'True', points: 50 },
-                        { id: 'q2', examid: '1', text: { ar: 'ما هو اللون القياسي لأنبوب السيترات؟', en: 'Standard Citrate tube color?' }, type: 'mc', options: { ar: ['أزرق', 'أحمر', 'أسود'], en: ['Blue', 'Red', 'Black'] }, correctAnswer: 'Blue', points: 50 }
-                      ]);
-                      if (qErr) throw qErr;
-                      
-                      alert('Database Seeded Successfully!');
-                      window.location.reload();
-                    } catch (err: any) {
-                      alert('Seed Error: ' + err.message);
-                    }
-                  }}
-                  className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/20 transition-all" title="Seed Database">
-                  <Zap className="w-5 h-5" />
-                </button>
-                <div className={`p-2 rounded-lg ${dbStatus.status === 'connected' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'} border border-current/20 font-black text-[10px] flex items-center gap-2`}>
-                   <Activity className="w-4 h-4" /> {dbStatus.status.toUpperCase()}
+    return (
+        <div className="p-3 sm:p-10 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-10 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 shrink-0 bg-white/30 backdrop-blur-xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[3.5rem] border border-alfa-neon-blue/10 shadow-lg">
+                <div className="flex flex-col">
+                  <h1 className="text-2xl sm:text-4xl font-black text-alfa-blue tracking-tighter uppercase font-logo">{text.adminPanel}</h1>
+                  <p className="text-[10px] sm:text-xs font-black opacity-30 uppercase tracking-[0.4em] mt-1">System Core Interface • {new Date().toLocaleDateString()}</p>
                 </div>
-             </div>
-        </AlfaCard>
-    </div>
-  );
+                <div className="flex gap-3">
+                    <AlfaButton variant="outline" onClick={() => setScreen('dashboard')} className="h-12 sm:h-16 px-6 sm:px-10 !rounded-2xl sm:!rounded-3xl border-alfa-neon-blue/20 text-alfa-blue">{text.back}</AlfaButton>
+                    <AlfaButton variant="danger" onClick={() => setScreen('login')} className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center !p-0 !rounded-2xl sm:!rounded-3xl shadow-neon-red border-alfa-neon-red/30"><LogOut className="w-6 h-6 sm:w-8 sm:h-8" /></AlfaButton>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 shrink-0">
+                {[
+                  { scr: 'admin_users', icon: User, title: lang === 'ar' ? '👥 إدارة المستخدمين' : '👥 Users', desc: `${users.length} Active Node`, color: 'alfa-neon-blue' },
+                  { scr: 'admin_exams', icon: ClipboardList, title: lang === 'ar' ? '📝 إدارة الاختبارات' : '📝 Exams', desc: `${exams.length} Modules`, color: 'emerald-500' },
+                  { scr: 'admin_questions', icon: List, title: lang === 'ar' ? '📚 بنك الأسئلة' : '📚 Library', desc: `${questions.length} Entry`, color: 'amber-500' },
+                  { scr: 'admin_results', icon: BarChart3, title: lang === 'ar' ? '📊 تقارير النتائج' : '📊 Telemetry', desc: `${totalResults} Submissions`, color: 'purple-500' },
+                ].map((btn, i) => (
+                  <button key={i} onClick={() => setScreen(btn.scr as any)} className="group text-start p-0 outline-none">
+                    <AlfaCard className={`h-full border-transparent group-hover:border-${btn.color}/30 transition-all duration-500 flex flex-col items-center py-6 sm:py-10 shadow-xl group-hover:shadow-[0_20px_50px_rgba(0,112,243,0.15)] group-active:scale-95`}>
+                        <div className={`w-12 h-12 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-${btn.color}/5 flex items-center justify-center mb-4 border border-${btn.color}/10 group-hover:scale-110 transition-transform`}>
+                            <btn.icon className={`w-6 h-6 sm:w-10 sm:h-10 text-${btn.color}/60 group-hover:text-${btn.color} transition-colors`} />
+                        </div>
+                        <h3 className="font-black text-alfa-blue text-[11px] sm:text-xl uppercase tracking-tight group-hover:text-alfa-neon-blue">{btn.title}</h3>
+                        <p className="text-[7px] sm:text-xs font-black opacity-20 mt-1 uppercase tracking-widest group-hover:opacity-40">{btn.desc}</p>
+                    </AlfaCard>
+                  </button>
+                ))}
+            </div>
+
+            <AlfaCard title={lang === 'ar' ? 'تحليلات الأداء التراكمي' : 'Cumulative Performance Analytics'} subtitle="REALTIME DB STREAM" className="flex-1 min-h-0 bg-alfa-blue/[0.02] p-4 sm:p-10 relative">
+                 <div className="h-full w-full min-h-[200px]">
+                   <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={users.length > 0 
+                          ? [...users].sort((a,b) => b.totalScore - a.totalScore).slice(0, 15).map(u => ({ name: u.name, score: u.totalScore })) 
+                          : MOCK_PROGRESS}>
+                        <XAxis dataKey="name" hide />
+                        <YAxis tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
+                        <Tooltip 
+                            itemStyle={{ fontWeight: 900, color: '#002855' }}
+                            contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.15)', fontStyle: 'normal', fontWeight: '900' }} 
+                        />
+                        <Area type="monotone" dataKey="score" stroke="#0070f3" strokeWidth={5} fill="#0070f3" fillOpacity={0.08} />
+                      </AreaChart>
+                   </ResponsiveContainer>
+                 </div>
+                 
+                 <div className="absolute top-4 right-4 flex gap-2">
+                    <button 
+                      onClick={async () => {
+                        if (!confirm('Re-syncing database...')) return;
+                        window.location.reload();
+                      }}
+                      className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/20 transition-all">
+                      <Zap className="w-5 h-5" />
+                    </button>
+                 </div>
+            </AlfaCard>
+
+            <AlfaCard title={lang === 'ar' ? 'مقارنة أداء المناطق' : 'Regional Comparison'}>
+                <div className="h-64 sm:h-80 w-full mt-6">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={MOCK_REGIONS.map(r => {
+                            const regionUsers = users.filter(u => u.region === r.id);
+                            return { 
+                                name: lang === 'ar' ? r.name.ar : r.name.en, 
+                                score: regionUsers.reduce((acc, u) => acc + u.totalScore, 0) 
+                            };
+                        })}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#00285510" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
+                            <Tooltip contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 10px 30px rgba(0,40,85,0.08)', fontWeight: 900 }} />
+                            <Area type="monotone" dataKey="score" stroke="#002855" strokeWidth={4} fill="#002855" fillOpacity={0.05} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
+            </AlfaCard>
+        </div>
+    );
+  };
 
   const AdminUsers = () => {
     const [name, setName] = useState('');
@@ -1404,30 +1431,53 @@ const AdminResults = () => {
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
 
-    const handleSaveUser = () => {
+    const handleSaveUser = async () => {
       if (!name || !empId) return;
-      if (editingUserId) {
-          setUsers(users.map(u => u.id === editingUserId ? { ...u, name, employeeId: empId, role, region: regionId } : u));
-      } else {
-          const newUser: UserData = {
-            id: Math.random().toString(36).substr(2, 9),
-            name,
-            employeeId: empId,
-            region: regionId,
-            totalScore: 0,
-            lastScore: 0,
-            badges: [],
-            role,
-            examResults: []
-          };
-          setUsers([...users, newUser]);
+      
+      const userId = editingUserId || 'u' + Date.now();
+      const userData = {
+        id: userId,
+        name,
+        employee_id: empId,
+        region: regionId,
+        role: role
+      };
+
+      try {
+        if (editingUserId) {
+            const { error } = await supabase.from('users').update(userData).eq('id', editingUserId);
+            if (error) throw error;
+            setUsers(users.map(u => u.id === editingUserId ? { ...u, name, employeeId: empId, role, region: regionId } : u));
+        } else {
+            const { error } = await supabase.from('users').insert([userData]);
+            if (error) throw error;
+            const newUser: UserData = {
+              ...userData,
+              employeeId: empId,
+              totalScore: 0,
+              lastScore: 0,
+              badges: [],
+              examResults: []
+            };
+            setUsers([...users, newUser]);
+        }
+        setName(''); setEmpId(''); setPass(''); setRole('user'); setRegionId(MOCK_REGIONS[0].id); setEditingUserId(null); setShowForm(false);
+      } catch (err: any) {
+        alert(lang === 'ar' ? 'فشل الحفظ: ' : 'Save Failed: ' + err.message);
       }
-      setName(''); setEmpId(''); setPass(''); setRole('user'); setRegionId(MOCK_REGIONS[0].id); setEditingUserId(null); setShowForm(false);
     };
 
-    const deleteUser = (id: string) => {
+    const deleteUser = async (id: string) => {
         if (id === 'admin') return;
-        setUsers(users.filter(u => u.id !== id));
+        if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الموظف؟' : 'Are you sure you want to delete this user?')) return;
+        
+        try {
+          const { error } = await supabase.from('users').delete().eq('id', id);
+          if (error) throw error;
+          setUsers(users.filter(u => u.id !== id));
+        } catch (err: any) {
+          alert('Delete Error: ' + err.message);
+        }
     };
 
     const startEdit = (u: UserData) => {
