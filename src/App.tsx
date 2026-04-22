@@ -401,10 +401,20 @@ const ExamScreen = ({
   };
 
 export default function App() {
+  const [lang, setLang] = useState<Lang>('ar');
+  const isRtl = lang === 'ar';
+  const text = translations[lang] || translations.ar;
+
   const [screen, setScreenState] = useState<Screen>('login');
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
-  const [lang, setLang] = useState<Lang>('ar');
   const [user, setUser] = useState<UserData | null>(null);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [exams, setExams] = useState<ExamMonth[]>([]);
+  const [globalCounts, setGlobalCounts] = useState({ exams: 0, questions: 0 });
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'pending' | 'error'>('synced');
+  const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
   const setScreen = (newScreen: Screen, pushHistory: boolean = true) => {
     if (pushHistory) {
@@ -456,8 +466,6 @@ export default function App() {
   }, [screenHistory, screen]);
 
   // Stateful Data - Initialize as empty to force DB fetch
-  const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder');
   
   const addLog = (msg: string) => {
@@ -487,19 +495,17 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     addLog("Initiating manual force sync...");
     setDbStatus({ status: 'syncing' });
     try {
-        // Prepare questions (mapping to flat schema just in case)
+        // Prepare questions accurately mapping to common Supabase column names
         const qData = questions.map(q => ({
             id: q.id,
-            text: q.text,
+            text: q.text, // jsonb support
             text_ar: q.text.ar,
             text_en: q.text.en,
             type: q.type,
             correct_answer: q.correctAnswer,
-            category: q.category,
             category_ar: q.category.ar,
             category_en: q.category.en,
             points: q.points,
-            options: q.options,
             option1: q.options?.ar?.[0] || '',
             option2: q.options?.ar?.[1] || '',
             option3: q.options?.ar?.[2] || '',
@@ -508,28 +514,37 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
 
         const eData = exams.map(e => ({
             id: e.id,
-            name: e.name,
+            name: e.name, // jsonb support
             name_ar: e.name.ar,
             name_en: e.name.en,
             duration: e.duration,
             status: e.status,
-            questions: e.questions,
+            questions: e.questions, // jsonb support
             points: e.points,
             type: e.type,
             group_name: e.groupName || ''
         }));
 
+        addLog("Upserting Questions...");
         const { error: qErr } = await supabase.from('questions').upsert(qData);
+        if (qErr) {
+            console.error("Q Sync Fail:", qErr);
+            throw new Error(`Questions Sync Error: ${qErr.message} (${qErr.details || 'Check DB Columns'})`);
+        }
+
+        addLog("Upserting Exams...");
         const { error: eErr } = await supabase.from('exams').upsert(eData);
+        if (eErr) {
+            console.error("E Sync Fail:", eErr);
+            throw new Error(`Exams Sync Error: ${eErr.message} (${eErr.details || 'Check DB Columns'})`);
+        }
 
-        if (qErr || eErr) throw (qErr || eErr);
-
-        alert(lang === 'ar' ? 'تمت المزامنة بنجاح!' : 'Sync completed successfully!');
+        alert(isRtl ? '✅ تمت المزامنة بنجاح! البيانات الآن متاحة للجميع.' : '✅ Sync successful! Data is now global.');
         setDbStatus({ status: 'connected' });
-        addLog("Manual sync successful.");
+        window.location.reload(); // Refresh to pull clean global data
     } catch (e: any) {
-        addLog("Manual sync failed: " + e.message);
-        alert(lang === 'ar' ? 'فشلت المزامنة: ' + e.message : 'Sync failed: ' + e.message);
+        addLog("SYNC ERROR: " + e.message);
+        alert(`❌ Sync Failure:\n\n${e.message}\n\nHint: Make sure Supabase columns match or RLS is disabled.`);
         setDbStatus({ status: 'error' });
     }
   };
@@ -549,9 +564,6 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         throw e;
     }
   };
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [exams, setExams] = useState<ExamMonth[]>([]);
-  const [questions, setQuestions] = useState<Question[]>([]);
   
   // Persistent Save to LocalStorage as Backup
   useEffect(() => {
@@ -569,9 +581,6 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
   
-  const isRtl = lang === 'ar';
-  const text = translations[lang];
-
   // Fetch Data from Supabase
   useEffect(() => {
     const handleGlobalError = (event: PromiseRejectionEvent | ErrorEvent) => {
@@ -589,65 +598,56 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
       addLog("Starting initial data sync...");
       setDbStatus({ status: 'syncing' });
       
-      // Load from backup first for instant UI
-      const backupQs = localStorage.getItem('alfa_questions_backup');
-      const backupExams = localStorage.getItem('alfa_exams_backup');
-      if (backupQs) setQuestions(JSON.parse(backupQs));
-      if (backupExams) setExams(JSON.parse(backupExams));
+      // Load local cache as backup
+      try {
+        const backupQs = localStorage.getItem('alfa_questions_backup');
+        const backupExams = localStorage.getItem('alfa_exams_backup');
+        if (backupQs && backupQs !== 'undefined') setQuestions(JSON.parse(backupQs));
+        if (backupExams && backupExams !== 'undefined') setExams(JSON.parse(backupExams));
+      } catch (e) {
+        console.warn("Failed to load local backup:", e);
+      }
 
       try {
-        const tableNames = ['exams', 'exam', 'EXAMS'];
-        let examsRaw: any[] = [];
-        let errorToThrow = null;
-        let successfulTable = 'exams';
+        // Core Fetch logic
+        addLog("Attempting to reach Global Server...");
+        const { data: globalExams, error: eErr } = await supabase.from('exams').select('*');
+        const { data: globalQs, error: qErr } = await supabase.from('questions').select('*');
 
-        for (const tName of tableNames) {
-           const { data, error } = await supabase.from(tName).select('*');
-           if (!error && data && data.length > 0) {
-              examsRaw = data;
-              successfulTable = tName;
-              break;
-           }
-           if (error) errorToThrow = error;
+        if (eErr || qErr) throw new Error(eErr?.message || qErr?.message);
+
+        if (globalExams && globalExams.length > 0) {
+            addLog(`Found ${globalExams.length} exams on server.`);
+            const processedExams = globalExams.map(e => ({
+                ...e,
+                id: String(e.id),
+                name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.id, en: e.name_en || e.id },
+                status: e.status || 'active',
+                questions: Array.isArray(e.questions) ? e.questions : [],
+                points: Number(e.points || 100)
+            }));
+            setExams(processedExams);
+            localStorage.setItem('alfa_exams_backup', JSON.stringify(processedExams));
+            setGlobalCounts(prev => ({ ...prev, exams: globalExams.length }));
         }
 
-        if (examsRaw.length === 0 && errorToThrow) throw errorToThrow;
-
-        if (examsRaw && examsRaw.length > 0) {
-          const processedExams = examsRaw.map(e => ({
-            ...e,
-            id: String(e.id),
-            name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
-            status: e.status || 'active',
-            type: e.type || 'monthly',
-            duration: e.duration || 300,
-            points: e.points || 100,
-            questions: Array.isArray(e.questions) ? e.questions : [],
-            groupName: e.group_name || e.groupName || ''
-          }));
-          setExams(processedExams);
-          setDbStatus({ status: 'connected', details: `${processedExams.length} Exams from "${successfulTable}"` });
-        } else {
-          setDbStatus({ status: 'empty', details: `Synced with "${successfulTable}", but 0 rows returned. Using Offline Data.` });
+        if (globalQs && globalQs.length > 0) {
+            addLog(`Found ${globalQs.length} questions on server.`);
+            const processedQs = globalQs.map(q => ({
+                ...q,
+                id: String(q.id),
+                text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.id, en: q.text_en || q.id },
+                correctAnswer: String(q.correct_answer || q.correctAnswer || ''),
+                options: typeof q.options === 'object' ? q.options : { ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), en: [] },
+                points: Number(q.points || 10)
+            }));
+            setQuestions(processedQs);
+            localStorage.setItem('alfa_questions_backup', JSON.stringify(processedQs));
+            setGlobalCounts(prev => ({ ...prev, questions: globalQs.length }));
         }
-
-        const { data: questionsData, error: qError } = await supabase.from('questions').select('*');
-        if (qError) console.error("Questions Error:", qError);
-        if (questionsData && questionsData.length > 0) {
-          const mappedQuestions = questionsData.map(q => ({
-            ...q,
-            id: String(q.id),
-            examid: String(q.exam_id || q.examid || q.examId || ''),
-            text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
-            correctAnswer: String(q.correct_answer || q.correctAnswer || q.correctanswer || ''),
-            options: typeof q.options === 'object' ? q.options : { 
-                ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), 
-                en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean) 
-            },
-            points: Number(q.points || 10)
-          }));
-          setQuestions(mappedQuestions as Question[]);
-        }
+        
+        setDbStatus({ status: 'connected' });
+        addLog("Global Sync Completed Successfully.");
 
         const { data: usersData } = await supabase.from('users').select('*');
         const { data: resultsData } = await supabase.from('results').select('*');
@@ -686,12 +686,12 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
             if (updatedUser) setUser(updatedUser as UserData);
           }
         }
-
       } catch (err: any) {
-        console.error("Fetch Error:", err);
+        addLog("GLOBAL FETCH FAILED: " + err.message);
         setDbStatus({ status: 'error', details: err.message });
       }
     }
+
     fetchData();
 
     // Setup Real-time subscriptions with incremental updates
@@ -1503,7 +1503,12 @@ const AdminResults = () => {
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 shrink-0 bg-white/30 backdrop-blur-xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[3.5rem] border border-alfa-neon-blue/10 shadow-lg">
                 <div className="flex flex-col">
                   <h1 className="text-2xl sm:text-4xl font-black text-alfa-blue tracking-tighter uppercase font-logo">{text.adminPanel}</h1>
-                  <p className="text-[10px] sm:text-xs font-black opacity-30 uppercase tracking-[0.4em] mt-1">System Core Interface • {new Date().toLocaleDateString()}</p>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${globalCounts.questions === questions.length ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600 animate-pulse'}`}>
+                        {globalCounts.questions === questions.length ? 'Global Sync: OK' : 'LOCAL ONLY - ACTION REQ'}
+                    </div>
+                    <p className="text-[9px] font-black opacity-30 uppercase tracking-[0.4em]">{new Date().toLocaleDateString()}</p>
+                  </div>
                 </div>
                 <div className="flex gap-3">
                     <AlfaButton variant="outline" onClick={() => setScreen('dashboard')} className="h-12 sm:h-16 px-6 sm:px-10 !rounded-2xl sm:!rounded-3xl border-alfa-neon-blue/20 text-alfa-blue">{text.back}</AlfaButton>
@@ -1513,10 +1518,10 @@ const AdminResults = () => {
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 shrink-0">
                 {[
-                  { scr: 'admin_users', icon: User, title: lang === 'ar' ? '👥 إدارة المستخدمين' : '👥 Users', desc: `${users.length} Active Node`, color: 'alfa-neon-blue' },
-                  { scr: 'admin_exams', icon: ClipboardList, title: lang === 'ar' ? '📝 إدارة الاختبارات' : '📝 Exams', desc: `${exams.length} Modules`, color: 'emerald-500' },
-                  { scr: 'admin_questions', icon: List, title: lang === 'ar' ? '📚 بنك الأسئلة' : '📚 Library', desc: `${questions.length} Entry`, color: 'amber-500' },
-                  { scr: 'admin_results', icon: BarChart3, title: lang === 'ar' ? '📊 تقارير النتائج' : '📊 Telemetry', desc: `${totalResults} Submissions`, color: 'purple-500' },
+                  { scr: 'admin_users', icon: User, title: lang === 'ar' ? '👥 المستخدمين' : '👥 Users', desc: `${users.length} Active`, color: 'alfa-neon-blue' },
+                  { scr: 'admin_exams', icon: ClipboardList, title: lang === 'ar' ? '📝 الاختبارات' : '📝 Exams', desc: `Global: ${globalCounts.exams}`, color: 'emerald-500' },
+                  { scr: 'admin_questions', icon: List, title: lang === 'ar' ? '📚 الأسئلة' : '📚 Bank', desc: `Global: ${globalCounts.questions}`, color: 'amber-500' },
+                  { scr: 'admin_results', icon: BarChart3, title: lang === 'ar' ? '📊 التقارير' : '📊 Reports', desc: `${totalResults} Total`, color: 'purple-500' },
                 ].map((btn, i) => (
                   <button key={i} onClick={() => setScreen(btn.scr as any)} className="group text-start p-0 outline-none">
                     <AlfaCard className={`h-full border-transparent group-hover:border-${btn.color}/30 transition-all duration-500 flex flex-col items-center py-6 sm:py-10 shadow-xl group-hover:shadow-[0_20px_50px_rgba(0,112,243,0.15)] group-active:scale-95`}>
@@ -1617,6 +1622,29 @@ const AdminResults = () => {
 
                     <div className="mt-6 border-t border-black/5 pt-6 flex flex-col gap-3">
                         <p className="text-[10px] font-black text-alfa-blue opacity-40 uppercase tracking-widest">Emergency Sync Tools</p>
+                        <AlfaButton variant="outline" className="h-14 !shadow-none border-dashed border-2 border-amber-500/20 text-amber-600" onClick={() => {
+                            const sql = `ALTER TABLE exams ADD COLUMN IF NOT EXISTS points int8 DEFAULT 100;
+ALTER TABLE exams ADD COLUMN IF NOT EXISTS type text DEFAULT 'monthly';
+ALTER TABLE exams ADD COLUMN IF NOT EXISTS group_name text DEFAULT '';
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS text_ar text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS text_en text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS correct_answer text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_ar text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_en text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS points int8;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option1 text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option2 text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option3 text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option4 text;
+ALTER TABLE exams DISABLE ROW LEVEL SECURITY;
+ALTER TABLE questions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE results DISABLE ROW LEVEL SECURITY;
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
+                            navigator.clipboard.writeText(sql);
+                            alert(isRtl ? 'تم نسخ كود إصلاح SQL. قم بلصقه في Supabase SQL Editor وتشغيله.' : 'SQL Repair code copied. Paste it in Supabase SQL Editor and Run.');
+                        }}>
+                            <Settings className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'نسخ كود إصلاح الجداول' : 'Copy SQL Repair Script'}
+                        </AlfaButton>
                         <AlfaButton variant="outline" className="h-14 !shadow-none border-dashed border-2 border-alfa-blue/20" onClick={generateSyncSQL}>
                             <Download className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'استخراج كود القواعد للمزامنة' : 'Generate SQL Sync Script'}
                         </AlfaButton>
