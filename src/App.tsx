@@ -457,9 +457,56 @@ export default function App() {
 
   // Stateful Data - Initialize as empty to force DB fetch
   const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder');
+  
+  const addLog = (msg: string) => {
+    console.log(`[ALFA-LOG] ${msg}`);
+    setDebugLogs(prev => [new Date().toLocaleTimeString() + ": " + msg, ...prev].slice(0, 10));
+  };
+
+  const generateSyncSQL = () => {
+    let sql = "-- ALPHA QUEZ SYNC SCRIPT\n";
+    questions.forEach(q => {
+        const opts = q.options?.ar || [];
+        sql += `INSERT INTO questions (id, text_ar, text_en, type, correct_answer, category_ar, category_en, points, option1, option2, option3, option4) 
+VALUES ('${q.id}', '${q.text.ar.replace(/'/g, "''")}', '${q.text.en.replace(/'/g, "''")}', '${q.type}', '${q.correctAnswer}', '${q.category.ar}', '${q.category.en}', ${q.points}, '${(opts[0] || '').replace(/'/g, "''")}', '${(opts[1] || '').replace(/'/g, "''")}', '${(opts[2] || '').replace(/'/g, "''")}', '${(opts[3] || '').replace(/'/g, "''")}')
+ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.text_en, correct_answer = EXCLUDED.correct_answer;\n\n`;
+    });
+    
+    const blob = new Blob([sql], { type: 'text/sql' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'alfa_sync.sql';
+    a.click();
+    alert(lang === 'ar' ? 'تم إنشاء ملف SQL. قم برفعه في Supabase لتحديث البيانات يدوياً.' : 'SQL file generated. Upload it to Supabase to update data manually.');
+  };
+
+  // Helper for Supabase with Timeout to prevent freezes
+  const supabaseCall = async (call: any, timeoutMs = 15000) => {
+    addLog("Starting Supabase call...");
+    try {
+        const result = await Promise.race([
+            call,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT: Supabase did not respond.')), timeoutMs))
+        ]);
+        addLog("Call completed successfully.");
+        return result;
+    } catch (e: any) {
+        addLog("Call failed: " + e.message);
+        throw e;
+    }
+  };
   const [users, setUsers] = useState<UserData[]>([]);
   const [exams, setExams] = useState<ExamMonth[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
+  
+  // Persistent Save to LocalStorage as Backup
+  useEffect(() => {
+    if (questions.length > 0) localStorage.setItem('alfa_questions_backup', JSON.stringify(questions));
+    if (exams.length > 0) localStorage.setItem('alfa_exams_backup', JSON.stringify(exams));
+  }, [questions, exams]);
   
   // Exam State
   const [activeExam, setActiveExam] = useState<ExamMonth | null>(null);
@@ -476,8 +523,27 @@ export default function App() {
 
   // Fetch Data from Supabase
   useEffect(() => {
+    const handleGlobalError = (event: PromiseRejectionEvent | ErrorEvent) => {
+        const error = (event as any).reason || (event as any).message || 'Unknown Error';
+        console.error("Global Error Caught:", error);
+        // Only alert for major issues
+        if (String(error).includes('Supabase') || String(error).includes('API')) {
+            alert("⚠️ Connection Error: " + String(error));
+        }
+    };
+    window.addEventListener('unhandledrejection', handleGlobalError as any);
+    window.addEventListener('error', handleGlobalError as any);
+    
     async function fetchData() {
+      addLog("Starting initial data sync...");
       setDbStatus({ status: 'syncing' });
+      
+      // Load from backup first for instant UI
+      const backupQs = localStorage.getItem('alfa_questions_backup');
+      const backupExams = localStorage.getItem('alfa_exams_backup');
+      if (backupQs) setQuestions(JSON.parse(backupQs));
+      if (backupExams) setExams(JSON.parse(backupExams));
+
       try {
         const tableNames = ['exams', 'exam', 'EXAMS'];
         let examsRaw: any[] = [];
@@ -577,16 +643,49 @@ export default function App() {
     }
     fetchData();
 
-    // Setup Real-time subscriptions
-    const channels = [
-      supabase.channel('users_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
-      supabase.channel('exams_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchData()).subscribe(),
-      supabase.channel('questions_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchData()).subscribe(),
-      supabase.channel('results_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => fetchData()).subscribe()
-    ];
+    // Setup Real-time subscriptions with incremental updates
+    const usersChannel = supabase.channel('users_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+              const newUser = payload.new as UserData;
+              setUsers(prev => prev.some(u => u.id === newUser.id) ? prev : [...prev, newUser]);
+          } else if (payload.eventType === 'UPDATE') {
+              setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
+          } else if (payload.eventType === 'DELETE') {
+              setUsers(prev => prev.filter(u => u.id === payload.old.id));
+          }
+      }).subscribe();
+
+    const examsChannel = supabase.channel('exams_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+              const e = payload.new;
+              setExams(prev => prev.some(item => item.id === e.id) ? prev : [...prev, { ...e, groupName: e.group_name } as ExamMonth]);
+          } else if (payload.eventType === 'UPDATE') {
+              const e = payload.new;
+              setExams(prev => prev.map(item => item.id === e.id ? { ...item, ...e, groupName: e.group_name } : item));
+          } else if (payload.eventType === 'DELETE') {
+              setExams(prev => prev.filter(item => item.id === payload.old.id));
+          }
+      }).subscribe();
+
+    const questionsChannel = supabase.channel('questions_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              fetchData(); // Questions have complex mapping, easier to re-fetch
+          } else if (payload.eventType === 'DELETE') {
+              setQuestions(prev => prev.filter(q => q.id !== String(payload.old.id)));
+          }
+      }).subscribe();
+
+    const resultsChannel = supabase.channel('results_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => fetchData()).subscribe();
 
     return () => {
-      channels.forEach(channel => supabase.removeChannel(channel));
+      supabase.removeChannel(usersChannel);
+      supabase.removeChannel(examsChannel);
+      supabase.removeChannel(questionsChannel);
+      supabase.removeChannel(resultsChannel);
     };
   }, []);
 
@@ -1340,6 +1439,16 @@ const AdminResults = () => {
 
     return (
         <div className="p-3 sm:p-10 max-w-6xl mx-auto flex flex-col gap-6 sm:gap-10 h-full overflow-hidden font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
+            {!isSupabaseConfigured && (
+                <div className="bg-red-600 text-white p-6 rounded-3xl animate-pulse flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                        <AlertTriangle className="w-10 h-10" />
+                        <h2 className="text-2xl font-black">تحذير: لم يتم ربط Supabase</h2>
+                    </div>
+                    <p className="text-sm font-bold opacity-90">يجب عليك الذهاب إلى الإعدادات (Settings) وإضافة VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY لكي يعمل الحفظ.</p>
+                </div>
+            )}
+            
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 shrink-0 bg-white/30 backdrop-blur-xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[3.5rem] border border-alfa-neon-blue/10 shadow-lg">
                 <div className="flex flex-col">
                   <h1 className="text-2xl sm:text-4xl font-black text-alfa-blue tracking-tighter uppercase font-logo">{text.adminPanel}</h1>
@@ -1418,6 +1527,57 @@ const AdminResults = () => {
                     </ResponsiveContainer>
                 </div>
             </AlfaCard>
+
+            <div className="bg-amber-50 p-6 rounded-3xl border-2 border-dashed border-amber-200">
+                <h4 className="text-amber-800 font-black text-sm uppercase tracking-widest mb-2">Technical Health Check</h4>
+                <div className="flex flex-col gap-4">
+                    <div className="flex gap-4">
+                        <AlfaButton variant="outline" className="h-12 text-xs !px-4" onClick={async () => {
+                            try {
+                                const { error } = await supabase.from('_health_check').select('count').limit(1);
+                                if (error) {
+                                    if (error.message.includes('relation')) {
+                                        alert("✅ Supabase is connected, but technical table is missing (expected). Connection is OK.");
+                                    } else {
+                                        alert("❌ Supabase Error: " + error.message);
+                                    }
+                                } else {
+                                    alert("✅ Connection perfect!");
+                                }
+                            } catch (e: any) {
+                                alert("❌ App Crash: " + e.message);
+                            }
+                        }}>Check Connection</AlfaButton>
+                        
+                        <AlfaButton variant="outline" className="h-12 text-xs !px-4" onClick={() => {
+                            const info = `User: ${user?.name} (${user?.id})\nUsers: ${users.length}\nExams: ${exams.length}\nQuestions: ${questions.length}\nEnv: ${import.meta.env.VITE_SUPABASE_URL ? 'Keys Found' : 'Missing Keys'}`;
+                            alert(info);
+                        }}>Diagnostics</AlfaButton>
+                    </div>
+
+                    <div className="mt-4 p-4 bg-black/5 rounded-xl">
+                        <p className="text-[10px] font-black opacity-40 uppercase mb-2">Latest Logs:</p>
+                        <div className="max-h-32 overflow-y-auto text-[10px] font-mono space-y-1">
+                            {debugLogs.length === 0 ? "No logs yet..." : debugLogs.map((log, i) => (
+                                <div key={i} className="border-b border-black/5 pb-1">{log}</div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="mt-6 border-t border-black/5 pt-6 flex flex-col gap-3">
+                        <p className="text-[10px] font-black text-alfa-blue opacity-40 uppercase tracking-widest">Emergency Sync Tools</p>
+                        <AlfaButton variant="outline" className="h-14 !shadow-none border-dashed border-2 border-alfa-blue/20" onClick={generateSyncSQL}>
+                            <Download className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'استخراج كود القواعد للمزامنة' : 'Generate SQL Sync Script'}
+                        </AlfaButton>
+                        <AlfaButton variant="outline" className="h-10 text-[9px] !shadow-none border-red-200 text-alfa-red" onClick={() => {
+                            if(confirm("DANGER: This will clear local backup. Proceed?")) {
+                                localStorage.clear();
+                                window.location.reload();
+                            }
+                        }}>Clear All Local Cache</AlfaButton>
+                    </div>
+                </div>
+            </div>
         </div>
     );
   };
@@ -1663,12 +1823,28 @@ const AdminResults = () => {
   };
 
   const AdminExams = () => {
-    const deleteExam = (id: string) => {
-        setExams(exams.filter(e => e.id !== id));
+    const deleteExam = async (id: string) => {
+        if (!confirm(lang === 'ar' ? 'حذف الاختبار نهائياً؟' : 'Delete this exam module?')) return;
+        try {
+            const { error } = await supabase.from('exams').delete().eq('id', id);
+            if (error) throw error;
+            setExams(exams.filter(e => e.id !== id));
+        } catch (err: any) {
+            alert('Delete Error: ' + err.message);
+        }
     };
 
-    const toggleExam = (id: string) => {
-        setExams(exams.map(e => e.id === id ? { ...e, status: e.status === 'active' ? 'locked' : 'active' } : e));
+    const toggleExam = async (id: string) => {
+        const exam = exams.find(e => e.id === id);
+        if (!exam) return;
+        const newStatus = exam.status === 'active' ? 'locked' : 'active';
+        try {
+            const { error } = await supabase.from('exams').update({ status: newStatus }).eq('id', id);
+            if (error) throw error;
+            setExams(exams.map(e => e.id === id ? { ...e, status: newStatus } : e));
+        } catch (err: any) {
+            console.error("Toggle Error:", err);
+        }
     };
 
     return (
@@ -1758,26 +1934,45 @@ const AdminResults = () => {
     const [examType, setExamType] = useState<'monthly' | 'training'>(editingExam?.type || 'monthly');
     const [groupName, setGroupName] = useState(editingExam?.groupName || '');
 
-    const saveExam = () => {
-        const id = editingExam?.id || (exams.length + 1).toString();
-        const updatedExam: ExamMonth = {
+    const [isSaving, setIsSaving] = useState(false);
+
+    const saveExam = async () => {
+        if (!arName || !enName) return alert('Enter name');
+        const id = editingExam?.id || String(Date.now());
+        
+        const dataToSave: any = {
             id,
             name: { ar: arName, en: enName },
             duration: Number(duration),
             status,
             questions: selectedQs,
-            points: totalPoints,
+            points: Number(totalPoints),
             type: examType,
-            groupName
+            group_name: groupName || ''
         };
 
-        if (editingExam) {
-            setExams(exams.map(e => e.id === id ? updatedExam : e));
-        } else {
-            setExams([...exams, updatedExam]);
-        }
-        setEditingExam(null);
+        // Instant UI Update
+        setExams(prev => {
+            const exists = prev.find(e => e.id === id);
+            if (exists) return prev.map(e => e.id === id ? dataToSave : e);
+            return [...prev, dataToSave];
+        });
         setScreen('admin_exams');
+        setEditingExam(null);
+        addLog("Exam added localized. Syncing...");
+
+        // Background Sync
+        try {
+            const { error } = await supabase.from('exams').upsert(dataToSave);
+            if (error) {
+                addLog("Sync Error: " + error.message);
+                console.error("Sync Error:", error);
+            } else {
+                addLog("Sync success!");
+            }
+        } catch (e: any) {
+            addLog("Network catch: " + e.message);
+        }
     };
 
     return (
@@ -1819,7 +2014,9 @@ const AdminResults = () => {
                             </div>
                         </div>
                     </AlfaCard>
-                    <AlfaButton onClick={saveExam} className="w-full h-16 shadow-2xl">{lang === 'ar' ? 'حفظ الاختبار' : 'Save Exam'}</AlfaButton>
+                    <AlfaButton onClick={saveExam} disabled={isSaving} className={`w-full h-16 shadow-2xl ${isSaving ? 'opacity-50' : ''}`}>
+                        {isSaving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ الاختبار' : 'Save Exam')}
+                    </AlfaButton>
                 </div>
 
                 <AlfaCard title="Questions Selection" subtitle={`${selectedQs.length} items checked`} className="border-alfa-blue/5 flex flex-col">
@@ -1846,47 +2043,68 @@ const AdminResults = () => {
   const [newQ, setNewQ] = useState<Partial<Question>>({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 5 });
   const [mcOptions, setMcOptions] = useState(['', '', '']);
 
-    const deleteQuestion = (id: string) => {
-        setQuestions(questions.filter(q => q.id !== id));
+  const [isSaving, setIsSaving] = useState(false);
+
+    const startNewQuestion = () => {
+        setEditingQ(null);
+        setNewQ({ 
+            type: 'mc', 
+            category: { ar: 'عام', en: 'General' }, 
+            points: 5,
+            text: { ar: '', en: '' },
+            correctAnswer: ''
+        });
+        setMcOptions(['', '', '']);
+        setIsAddModal(true);
+    };
+
+    const deleteQuestion = async (id: string) => {
+        if (!confirm(lang === 'ar' ? 'حذف السؤال نهائياً؟' : 'Delete this question?')) return;
+        try {
+            const { error } = await supabase.from('questions').delete().eq('id', id);
+            if (error) throw error;
+            setQuestions(questions.filter(q => q.id !== id));
+        } catch (err: any) {
+            alert('Delete Error: ' + err.message);
+        }
     };
 
     const addQuestion = async () => {
-        if (!newQ.text?.ar || !newQ.correctAnswer) return;
+        if (!newQ.text?.ar) return alert('Please enter question text');
+        const id = editingQ?.id || String(Date.now());
         
-        let savedQ: Question;
-        if (editingQ) {
-            // Update
-            savedQ = { ...editingQ, ...newQ, options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined } as Question;
-            setQuestions(questions.map(q => q.id === editingQ.id ? savedQ : q));
-             const { error } = await supabase.from('questions').update({
-                text: savedQ.text,
-                type: savedQ.type,
-                correctAnswer: savedQ.correctAnswer,
-                category: savedQ.category,
-                points: savedQ.points,
-                options: savedQ.options
-            }).eq('id', savedQ.id);
-            if (error) console.error("Error updating question:", error);
-        } else {
-            // New
-            savedQ = {
-                id: 'q' + Date.now(),
-                text: newQ.text as any,
-                type: newQ.type as any,
-                correctAnswer: newQ.correctAnswer,
-                category: newQ.category as any,
-                points: newQ.points || 0,
-                options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined
-            };
-            setQuestions([...questions, savedQ]);
-            const { error } = await supabase.from('questions').insert([savedQ]);
-            if (error) console.error("Error adding question:", error);
-        }
-        
+        const dataToSave: any = {
+            id,
+            text: newQ.text,
+            type: newQ.type || 'mc',
+            options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : { ar: [], en: [] },
+            correct_answer: String(newQ.correctAnswer || ''),
+            category: newQ.category || { ar: 'عام', en: 'General' },
+            points: Number(newQ.points || 5)
+        };
+
+        // Instant UI Update - NO WAITING
+        setQuestions(prev => {
+            const exists = prev.find(q => q.id === id);
+            if (exists) return prev.map(q => q.id === id ? dataToSave : q);
+            return [...prev, dataToSave];
+        });
         setIsAddModal(false);
         setEditingQ(null);
-        setNewQ({ type: 'mc', category: { ar: 'عام', en: 'General' } });
-        setMcOptions(['', '', '']);
+        addLog("Question added locally. Syncing in background...");
+
+        // Background Sync - fails silently in the UI but logs the error
+        try {
+            const { error } = await supabase.from('questions').upsert(dataToSave);
+            if (error) {
+                addLog("Sync Error: " + error.message);
+                console.error("Supabase Error:", error);
+            } else {
+                addLog("Sync successful!");
+            }
+        } catch (e: any) {
+            addLog("Network problem: " + e.message);
+        }
     };
     
     const openEdit = (q: Question) => {
@@ -1906,7 +2124,7 @@ const AdminResults = () => {
                 </button>
                 <h1 className="text-xl sm:text-2xl font-black text-white">{lang === 'ar' ? 'بنك الأسئلة' : 'Question Bank'}</h1>
             </div>
-            <AlfaButton onClick={() => setIsAddModal(true)} className="h-12 sm:h-14 px-6 text-sm relative z-10 shadow-lg">
+            <AlfaButton onClick={startNewQuestion} className="h-12 sm:h-14 px-6 text-sm relative z-10 shadow-lg">
                 <Plus className="w-4 h-4 mr-1" /> {lang === 'ar' ? 'سؤال جديد' : 'New'}
             </AlfaButton>
         </header>
@@ -1967,8 +2185,12 @@ const AdminResults = () => {
                                 </div>
 
                                 <div className="flex flex-col gap-3 mt-8">
-                                    <AlfaButton onClick={addQuestion} className="w-full h-14 shadow-lg">{lang === 'ar' ? 'حفظ السؤال' : 'Save Question'}</AlfaButton>
-                                    <AlfaButton variant="outline" onClick={() => setIsAddModal(false)} className="w-full h-14 opacity-50">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</AlfaButton>
+                                    <AlfaButton onClick={addQuestion} disabled={isSaving} className={`w-full h-14 shadow-lg ${isSaving ? 'opacity-50' : ''}`}>
+                                        {isSaving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ السؤال' : 'Save Question')}
+                                    </AlfaButton>
+                                    <AlfaButton variant="outline" onClick={() => setIsAddModal(false)} className="w-full h-14 opacity-50">
+                                        {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                                    </AlfaButton>
                                 </div>
                             </div>
                         </motion.div>
