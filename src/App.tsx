@@ -7,7 +7,7 @@ import {
   ArrowLeft, AlertTriangle, List, Plus, Trash2, Edit2,
   Calendar, Award, Briefcase, Zap, Cpu, Settings,
   LogOut, Globe, ClipboardList, Info, Download, FileSpreadsheet,
-  TrendingUp, Activity, Frown, PartyPopper, AlertCircle
+  TrendingUp, Activity, Frown, PartyPopper, AlertCircle, RefreshCcw, UploadCloud
 } from 'lucide-react';
 import { AlfaButton } from './components/AlfaButton';
 import { AlfaInput } from './components/AlfaInput';
@@ -481,6 +481,57 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     a.download = 'alfa_sync.sql';
     a.click();
     alert(lang === 'ar' ? 'تم إنشاء ملف SQL. قم برفعه في Supabase لتحديث البيانات يدوياً.' : 'SQL file generated. Upload it to Supabase to update data manually.');
+  };
+
+  const forceSync = async () => {
+    addLog("Initiating manual force sync...");
+    setDbStatus({ status: 'syncing' });
+    try {
+        // Prepare questions (mapping to flat schema just in case)
+        const qData = questions.map(q => ({
+            id: q.id,
+            text: q.text,
+            text_ar: q.text.ar,
+            text_en: q.text.en,
+            type: q.type,
+            correct_answer: q.correctAnswer,
+            category: q.category,
+            category_ar: q.category.ar,
+            category_en: q.category.en,
+            points: q.points,
+            options: q.options,
+            option1: q.options?.ar?.[0] || '',
+            option2: q.options?.ar?.[1] || '',
+            option3: q.options?.ar?.[2] || '',
+            option4: q.options?.ar?.[3] || '',
+        }));
+
+        const eData = exams.map(e => ({
+            id: e.id,
+            name: e.name,
+            name_ar: e.name.ar,
+            name_en: e.name.en,
+            duration: e.duration,
+            status: e.status,
+            questions: e.questions,
+            points: e.points,
+            type: e.type,
+            group_name: e.groupName || ''
+        }));
+
+        const { error: qErr } = await supabase.from('questions').upsert(qData);
+        const { error: eErr } = await supabase.from('exams').upsert(eData);
+
+        if (qErr || eErr) throw (qErr || eErr);
+
+        alert(lang === 'ar' ? 'تمت المزامنة بنجاح!' : 'Sync completed successfully!');
+        setDbStatus({ status: 'connected' });
+        addLog("Manual sync successful.");
+    } catch (e: any) {
+        addLog("Manual sync failed: " + e.message);
+        alert(lang === 'ar' ? 'فشلت المزامنة: ' + e.message : 'Sync failed: ' + e.message);
+        setDbStatus({ status: 'error' });
+    }
   };
 
   // Helper for Supabase with Timeout to prevent freezes
@@ -1578,6 +1629,22 @@ const AdminResults = () => {
                     </div>
                 </div>
             </div>
+
+            <AlfaCard className="border-emerald-500/20 bg-emerald-50/20 mt-6 overflow-hidden !rounded-[3rem]">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-6 p-4">
+                    <div className="flex flex-col text-center sm:text-start">
+                        <h3 className="text-xl font-black text-emerald-800 uppercase tracking-tight">{lang === 'ar' ? 'مزامنة البيانات (Cloud Sync)' : 'Cloud Data Sync'}</h3>
+                        <p className="text-xs font-bold text-emerald-600/60 mt-1">{lang === 'ar' ? 'تأكد من إرسال البيانات المضافة لجهاز السيرفر لكي يراها الجميع' : 'Ensure all your local data is pushed to the server for others to see.'}</p>
+                    </div>
+                    <AlfaButton 
+                        onClick={forceSync}
+                        className="bg-emerald-500 hover:bg-emerald-600 shadow-xl shadow-emerald-500/20 h-16 px-10 rounded-3xl"
+                    >
+                        <RefreshCcw className="w-6 h-6 mr-3" />
+                        {lang === 'ar' ? 'مزامنة شاملة الآن' : 'Push Local to Global'}
+                    </AlfaButton>
+                </div>
+            </AlfaCard>
         </div>
     );
   };
