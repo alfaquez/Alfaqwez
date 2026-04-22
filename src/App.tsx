@@ -65,7 +65,6 @@ interface Question {
   correctAnswer: string;
   category: { ar: string, en: string };
   points: number;
-  examid?: string;
 }
 
 // --- Translations ---
@@ -476,106 +475,106 @@ export default function App() {
   const text = translations[lang];
 
   // Fetch Data from Supabase
-  const fetchData = async () => {
-    setDbStatus({ status: 'syncing' });
-    try {
-      // 1. Fetch Exams
-      const tableNames = ['exams', 'exam', 'EXAMS'];
-      let examsRaw: any[] = [];
-      let examsError = null;
-      let successfulTable = 'exams';
-
-      for (const tName of tableNames) {
-         const { data, error } = await supabase.from(tName).select('*');
-         if (!error && data) {
-            examsRaw = data;
-            successfulTable = tName;
-            break;
-         }
-         if (error) examsError = error;
-      }
-
-      if (examsRaw && examsRaw.length > 0) {
-        const processedExams = examsRaw.map(e => ({
-          ...e,
-          id: String(e.id),
-          name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
-          status: e.status || 'active',
-          type: e.type || 'monthly',
-          duration: e.duration || 300,
-          points: e.points || 100,
-          questions: Array.isArray(e.questions) ? e.questions : (typeof e.questions === 'string' ? JSON.parse(e.questions) : []),
-          groupName: e.group_name || e.groupName || ''
-        }));
-        setExams(processedExams);
-      }
-
-      // 2. Fetch Questions
-      let { data: questionsData, error: qError } = await supabase.from('questions').select('*');
-      if (qError) {
-          console.error("Questions Table Error:", qError);
-          // If questions table fails, maybe it is called 'question'
-          const { data: qData2 } = await supabase.from('question').select('*');
-          if (qData2) questionsData = qData2;
-      }
-
-      if (questionsData) {
-        const mappedQuestions = questionsData.map(q => ({
-          ...q,
-          id: String(q.id),
-          examid: String(q.exam_id || q.examid || q.examId || ''),
-          text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
-          correctAnswer: String(q.correct_answer || q.correctAnswer || q.correctanswer || ''),
-          category: typeof q.category === 'object' ? q.category : { ar: q.category || 'عام', en: q.category || 'General' },
-          options: typeof q.options === 'object' ? q.options : { 
-              ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean).length > 0 ? [q.option1, q.option2, q.option3, q.option4].filter(Boolean) : (q.type === 'tf' ? ['صح', 'خطأ'] : []), 
-              en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean).length > 0 ? [q.option1, q.option2, q.option3, q.option4].filter(Boolean) : (q.type === 'tf' ? ['True', 'False'] : [])
-          },
-          points: Number(q.points || 10)
-        }));
-        setQuestions(mappedQuestions as Question[]);
-      }
-
-      // 3. Fetch Users & Results
-      const { data: usersData } = await supabase.from('users').select('*');
-      const { data: resultsData } = await supabase.from('results').select('*');
-      
-      if (usersData) {
-        const mappedUsers = usersData.map(u => {
-          const userResults = (resultsData || [])
-            .filter(r => r.user_id === u.id || r.userId === u.id)
-            .map(r => ({
-              examId: String(r.exam_id || r.examId),
-              score: Number(r.score),
-              rawScore: Number(r.raw_score || r.rawScore),
-              maxScore: Number(r.max_score || r.maxScore),
-              date: r.created_at || r.date
-            }));
-          
-          const dbScore = Number(u.total_score || u.totalScore || 0);
-          const calculatedTotal = userResults.reduce((acc, res) => acc + res.score, 0);
-          const currentTotalScore = dbScore > 0 ? dbScore : calculatedTotal;
-
-          return {
-            ...u,
-            employeeId: u.employee_id || u.employeeId,
-            totalScore: currentTotalScore,
-            lastScore: Number(u.last_score || u.lastScore || 0),
-            examResults: userResults,
-            allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
-          };
-        });
-        setUsers(mappedUsers as UserData[]);
-        setDbStatus({ status: 'connected', details: `Synced: ${examsRaw?.length || 0} Ex, ${questionsData?.length || 0} Qs, ${usersData.length} Users` });
-      }
-
-    } catch (err: any) {
-      console.error("Critical Sync Error:", err);
-      setDbStatus({ status: 'error', details: err.message });
-    }
-  };
-
   useEffect(() => {
+    async function fetchData() {
+      setDbStatus({ status: 'syncing' });
+      try {
+        const tableNames = ['exams', 'exam', 'EXAMS'];
+        let examsRaw: any[] = [];
+        let errorToThrow = null;
+        let successfulTable = 'exams';
+
+        for (const tName of tableNames) {
+           const { data, error } = await supabase.from(tName).select('*');
+           if (!error && data && data.length > 0) {
+              examsRaw = data;
+              successfulTable = tName;
+              break;
+           }
+           if (error) errorToThrow = error;
+        }
+
+        if (examsRaw.length === 0 && errorToThrow) throw errorToThrow;
+
+        if (examsRaw && examsRaw.length > 0) {
+          const processedExams = examsRaw.map(e => ({
+            ...e,
+            id: String(e.id),
+            name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.name || e.id, en: e.name_en || e.name || e.id },
+            status: e.status || 'active',
+            type: e.type || 'monthly',
+            duration: e.duration || 300,
+            points: e.points || 100,
+            questions: Array.isArray(e.questions) ? e.questions : [],
+            groupName: e.group_name || e.groupName || ''
+          }));
+          setExams(processedExams);
+          setDbStatus({ status: 'connected', details: `${processedExams.length} Exams from "${successfulTable}"` });
+        } else {
+          setDbStatus({ status: 'empty', details: `Synced with "${successfulTable}", but 0 rows returned. Using Offline Data.` });
+        }
+
+        const { data: questionsData, error: qError } = await supabase.from('questions').select('*');
+        if (qError) console.error("Questions Error:", qError);
+        if (questionsData && questionsData.length > 0) {
+          const mappedQuestions = questionsData.map(q => ({
+            ...q,
+            id: String(q.id),
+            examid: String(q.exam_id || q.examid || q.examId || ''),
+            text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.question || q.text || '', en: q.text_en || q.question || q.text || '' },
+            correctAnswer: String(q.correct_answer || q.correctAnswer || q.correctanswer || ''),
+            options: typeof q.options === 'object' ? q.options : { 
+                ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), 
+                en: [q.option1, q.option2, q.option3, q.option4].filter(Boolean) 
+            },
+            points: Number(q.points || 10)
+          }));
+          setQuestions(mappedQuestions as Question[]);
+        }
+
+        const { data: usersData } = await supabase.from('users').select('*');
+        const { data: resultsData } = await supabase.from('results').select('*');
+        
+        if (usersData) {
+          const mappedUsers = usersData.map(u => {
+            const userResults = (resultsData || [])
+              .filter(r => r.user_id === u.id)
+              .map(r => ({
+                examId: String(r.exam_id),
+                score: Number(r.score),
+                rawScore: Number(r.raw_score),
+                maxScore: Number(r.max_score),
+                date: r.created_at || r.date
+              }));
+            
+            // Calculate total score from results if DB total_score is 0 for robustness
+            const dbScore = Number(u.total_score || u.totalScore || 0);
+            const calculatedTotal = userResults.reduce((acc, res) => acc + res.score, 0);
+            const currentTotalScore = dbScore > 0 ? dbScore : calculatedTotal;
+
+            return {
+              ...u,
+              employeeId: u.employee_id || u.employeeId,
+              totalScore: currentTotalScore,
+              lastScore: Number(u.last_score || u.lastScore || 0),
+              examResults: userResults,
+              allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
+            };
+          });
+          setUsers(mappedUsers as UserData[]);
+          
+          // Refresh logged in user data if exists
+          if (user && user.id !== 'admin') {
+            const updatedUser = mappedUsers.find(curr => curr.id === user.id);
+            if (updatedUser) setUser(updatedUser as UserData);
+          }
+        }
+
+      } catch (err: any) {
+        console.error("Fetch Error:", err);
+        setDbStatus({ status: 'error', details: err.message });
+      }
+    }
     fetchData();
 
     // Setup Real-time subscriptions
@@ -878,7 +877,7 @@ export default function App() {
                   )}
                   <AlfaInput label={text.password} name="password" neon className="h-12" placeholder={text.passwordPlaceholder} type="password" icon={<Lock className="w-5 h-5"/>} />
                   {/* Hidden input for employeeId if in admin mode */}
-                  {loginMode === 'admin' && <input type="hidden" name="employeeId" value="admin" readOnly />}
+                  {loginMode === 'admin' && <input type="hidden" name="employeeId" value="admin" />}
                   <AlfaButton type="submit" className="w-full mt-2 h-14 text-xl shadow-xl alfa-neon-blue">
                       {text.login}
                   </AlfaButton>
@@ -1344,28 +1343,7 @@ const AdminResults = () => {
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 shrink-0 bg-white/30 backdrop-blur-xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[3.5rem] border border-alfa-neon-blue/10 shadow-lg">
                 <div className="flex flex-col">
                   <h1 className="text-2xl sm:text-4xl font-black text-alfa-blue tracking-tighter uppercase font-logo">{text.adminPanel}</h1>
-                  <p className="text-[10px] sm:text-xs font-black opacity-30 uppercase tracking-[0.2em] mt-1">System Core Interface • {new Date().toLocaleDateString()}</p>
-                  {/* Database Status Badge */}
-                  <div className="flex items-center gap-2 mt-2">
-                      <div className={`w-2 h-2 rounded-full ${dbStatus.status === 'connected' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,1)]' : 'bg-red-500'} animate-pulse`} />
-                      <span className={`text-[8px] font-black uppercase tracking-widest ${dbStatus.status === 'connected' ? 'text-emerald-500' : 'text-red-500'}`}>
-                          {dbStatus.status === 'connected' ? 'Connected' : 'Offline Mode'}
-                      </span>
-                      <button onClick={() => fetchData()} className="ml-2 p-1 alfa-glass rounded-md hover:bg-white/20 transition-all">
-                          <Zap className="w-3 h-3 text-alfa-neon-blue" />
-                      </button>
-                  </div>
-                  {/* Debug Info (Hidden by default) */}
-                  <details className="mt-4 opacity-10 font-mono text-[8px] overflow-hidden max-w-[200px]">
-                      <summary className="cursor-pointer">SYSTEM TRACE</summary>
-                      <pre className="mt-2 whitespace-pre-wrap">{JSON.stringify({
-                          exams: exams.length,
-                          questions: questions.length,
-                          users: users.length,
-                          results: users.reduce((acc, u) => acc + (u.examResults?.length || 0), 0),
-                          db: dbStatus.status
-                      }, null, 2)}</pre>
-                  </details>
+                  <p className="text-[10px] sm:text-xs font-black opacity-30 uppercase tracking-[0.4em] mt-1">System Core Interface • {new Date().toLocaleDateString()}</p>
                 </div>
                 <div className="flex gap-3">
                     <AlfaButton variant="outline" onClick={() => setScreen('dashboard')} className="h-12 sm:h-16 px-6 sm:px-10 !rounded-2xl sm:!rounded-3xl border-alfa-neon-blue/20 text-alfa-blue">{text.back}</AlfaButton>
@@ -1454,10 +1432,7 @@ const AdminResults = () => {
     const [showForm, setShowForm] = useState(false);
 
     const handleSaveUser = async () => {
-      if (!name || !empId) {
-          alert(lang === 'ar' ? 'برجاء إدخال الاسم والكود' : 'Please enter Name and Code');
-          return;
-      }
+      if (!name || !empId) return;
       
       const userId = editingUserId || 'u' + Date.now();
       const userData = {
@@ -1469,19 +1444,24 @@ const AdminResults = () => {
       };
 
       try {
-        let res;
         if (editingUserId) {
-            res = await supabase.from('users').update(userData).eq('id', editingUserId);
+            const { error } = await supabase.from('users').update(userData).eq('id', editingUserId);
+            if (error) throw error;
+            setUsers(users.map(u => u.id === editingUserId ? { ...u, name, employeeId: empId, role, region: regionId } : u));
         } else {
-            res = await supabase.from('users').insert([userData]);
+            const { error } = await supabase.from('users').insert([userData]);
+            if (error) throw error;
+            const newUser: UserData = {
+              ...userData,
+              employeeId: empId,
+              totalScore: 0,
+              lastScore: 0,
+              badges: [],
+              examResults: []
+            };
+            setUsers([...users, newUser]);
         }
-        
-        if (res.error) throw res.error;
-        
-        await fetchData(); // Force sync
-        
         setName(''); setEmpId(''); setPass(''); setRole('user'); setRegionId(MOCK_REGIONS[0].id); setEditingUserId(null); setShowForm(false);
-        alert(lang === 'ar' ? 'تم حفظ بيانات الموظف بنجاح ✅' : 'Employee data saved successfully ✅');
       } catch (err: any) {
         alert(lang === 'ar' ? 'فشل الحفظ: ' : 'Save Failed: ' + err.message);
       }
@@ -1683,31 +1663,12 @@ const AdminResults = () => {
   };
 
   const AdminExams = () => {
-    const deleteExam = async (id: string) => {
-        if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الاختبار؟' : 'Are you sure you want to delete this exam?')) return;
+    const deleteExam = (id: string) => {
         setExams(exams.filter(e => e.id !== id));
-        try {
-            const { error } = await supabase.from('exams').delete().eq('id', id);
-            if (error) throw error;
-        } catch (err: any) {
-            alert('Delete Error: ' + err.message);
-            fetchData(); // Rollback local state
-        }
     };
 
-    const toggleExam = async (id: string) => {
-        const exam = exams.find(e => e.id === id);
-        if (!exam) return;
-        const newStatus = exam.status === 'active' ? 'locked' : 'active';
-        setExams(exams.map(e => e.id === id ? { ...e, status: newStatus } : e));
-        
-        try {
-            const { error } = await supabase.from('exams').update({ status: newStatus }).eq('id', id);
-            if (error) throw error;
-        } catch (err: any) {
-            alert('Status Toggle Error: ' + err.message);
-            fetchData();
-        }
+    const toggleExam = (id: string) => {
+        setExams(exams.map(e => e.id === id ? { ...e, status: e.status === 'active' ? 'locked' : 'active' } : e));
     };
 
     return (
@@ -1797,16 +1758,11 @@ const AdminResults = () => {
     const [examType, setExamType] = useState<'monthly' | 'training'>(editingExam?.type || 'monthly');
     const [groupName, setGroupName] = useState(editingExam?.groupName || '');
 
-    const saveExam = async () => {
-        if (!arName) {
-            alert(lang === 'ar' ? 'برجاء إدخال اسم الاختبار' : 'Please enter Exam Name');
-            return;
-        }
-
-        const id = editingExam?.id || 'ex' + Date.now();
+    const saveExam = () => {
+        const id = editingExam?.id || (exams.length + 1).toString();
         const updatedExam: ExamMonth = {
             id,
-            name: { ar: arName, en: enName || arName },
+            name: { ar: arName, en: enName },
             duration: Number(duration),
             status,
             questions: selectedQs,
@@ -1815,35 +1771,13 @@ const AdminResults = () => {
             groupName
         };
 
-        const dbPayload = {
-            id,
-            name: updatedExam.name,
-            duration: updatedExam.duration,
-            status: updatedExam.status,
-            questions: updatedExam.questions,
-            points: updatedExam.points,
-            type: updatedExam.type,
-            group_name: updatedExam.groupName
-        };
-
-        try {
-            let res;
-            if (editingExam) {
-                res = await supabase.from('exams').update(dbPayload).eq('id', id);
-            } else {
-                res = await supabase.from('exams').insert([dbPayload]);
-            }
-            
-            if (res.error) throw res.error;
-
-            await fetchData(); // Force sync
-            
-            setEditingExam(null);
-            setScreen('admin_exams');
-            alert(lang === 'ar' ? 'تم حفظ الاختبار بنجاح ✅' : 'Exam saved successfully ✅');
-        } catch (err: any) {
-            alert(lang === 'ar' ? 'فشل حفظ الاختبار: ' : 'Save Exam Failed: ' + err.message);
+        if (editingExam) {
+            setExams(exams.map(e => e.id === id ? updatedExam : e));
+        } else {
+            setExams([...exams, updatedExam]);
         }
+        setEditingExam(null);
+        setScreen('admin_exams');
     };
 
     return (
@@ -1912,82 +1846,47 @@ const AdminResults = () => {
   const [newQ, setNewQ] = useState<Partial<Question>>({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 5 });
   const [mcOptions, setMcOptions] = useState(['', '', '']);
 
-    const [isSaving, setIsSaving] = useState(false);
-
-    const deleteQuestion = async (id: string) => {
-        if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا السؤال؟' : 'Double check: Delete this question?')) return;
+    const deleteQuestion = (id: string) => {
         setQuestions(questions.filter(q => q.id !== id));
-        try {
-            const { error } = await supabase.from('questions').delete().eq('id', id);
-            if (error) throw error;
-        } catch (err: any) {
-            alert('Delete Question Error: ' + err.message);
-            fetchData();
-        }
     };
 
     const addQuestion = async () => {
-        if (!newQ.text?.ar) {
-            alert(lang === 'ar' ? 'برجاء إدخال نص السؤال بالعربية' : 'Please enter Arabic question text');
-            return;
-        }
-        if (!newQ.correctAnswer) {
-            alert(lang === 'ar' ? 'برجاء اختيار الإجابة الصحيحة' : 'Please select the correct answer');
-            return;
+        if (!newQ.text?.ar || !newQ.correctAnswer) return;
+        
+        let savedQ: Question;
+        if (editingQ) {
+            // Update
+            savedQ = { ...editingQ, ...newQ, options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined } as Question;
+            setQuestions(questions.map(q => q.id === editingQ.id ? savedQ : q));
+             const { error } = await supabase.from('questions').update({
+                text: savedQ.text,
+                type: savedQ.type,
+                correctAnswer: savedQ.correctAnswer,
+                category: savedQ.category,
+                points: savedQ.points,
+                options: savedQ.options
+            }).eq('id', savedQ.id);
+            if (error) console.error("Error updating question:", error);
+        } else {
+            // New
+            savedQ = {
+                id: 'q' + Date.now(),
+                text: newQ.text as any,
+                type: newQ.type as any,
+                correctAnswer: newQ.correctAnswer,
+                category: newQ.category as any,
+                points: newQ.points || 0,
+                options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined
+            };
+            setQuestions([...questions, savedQ]);
+            const { error } = await supabase.from('questions').insert([savedQ]);
+            if (error) console.error("Error adding question:", error);
         }
         
-        setIsSaving(true);
-        
-        const id = editingQ ? editingQ.id : 'q' + Date.now();
-        const savedQ: Question = { 
-            ...newQ, 
-            id,
-            text: { ar: newQ.text.ar, en: newQ.text.en || newQ.text.ar },
-            options: newQ.type === 'mc' ? { ar: mcOptions, en: mcOptions } : undefined,
-            category: newQ.category || { ar: 'عام', en: 'General' },
-            points: newQ.points || 10
-        } as Question;
-
-        const dbPayload = {
-            id: savedQ.id,
-            text: savedQ.text,
-            type: savedQ.type,
-            correct_answer: savedQ.correctAnswer,
-            correctAnswer: savedQ.correctAnswer,
-            category: savedQ.category,
-            points: savedQ.points,
-            options: savedQ.options,
-            exam_id: savedQ.examid || ''
-        };
-
-        try {
-            let res;
-            if (editingQ) {
-                res = await supabase.from('questions').update(dbPayload).eq('id', id);
-            } else {
-                res = await supabase.from('questions').insert([dbPayload]);
-            }
-            
-            if (res.error) throw res.error;
-
-            // Success feedback
-            console.log("Question saved successfully to DB");
-            
-            // Re-fetch to ensure local sync is perfect
-            await fetchData();
-            
-            setIsAddModal(false);
-            setEditingQ(null);
-            setNewQ({ type: 'mc', category: { ar: 'عام', en: 'General' }, points: 10 });
-            setMcOptions(['', '', '']);
-            
-            alert(lang === 'ar' ? 'تم حفظ السؤال بنجاح ✅' : 'Question saved successfully ✅');
-        } catch (err: any) {
-            alert(lang === 'ar' ? 'فشل حفظ السؤال في قاعدة البيانات: ' : 'Failed to save question to DB: ' + err.message);
-            console.error("Save Question Error:", err);
-        } finally {
-            setIsSaving(false);
-        }
+        setIsAddModal(false);
+        setEditingQ(null);
+        setNewQ({ type: 'mc', category: { ar: 'عام', en: 'General' } });
+        setMcOptions(['', '', '']);
     };
     
     const openEdit = (q: Question) => {
@@ -2018,11 +1917,11 @@ const AdminResults = () => {
                         <motion.div initial={{ x: 300 }} animate={{ x: 0 }} exit={{ x: 300 }} className="h-full w-full max-w-md alfa-glass rounded-[2.5rem] p-8 overflow-y-auto shadow-[0_0_50px_rgba(0,40,85,0.15)] border-l-2 border-l-alfa-blue/20">
                             <h2 className="text-2xl font-black text-alfa-blue mb-8 tracking-tight">{lang === 'ar' ? 'إضافة سؤال جديد' : 'Add Question'}</h2>
                             <div className="flex flex-col gap-6">
-                                <AlfaInput label={lang === 'ar' ? 'نص السؤال (بالعربي)' : 'Question (Arabic)'} value={newQ.text?.ar ?? ""} onChange={(e) => setNewQ({...newQ, text: {ar: e.target.value, en: e.target.value} as any})} />
+                                <AlfaInput label={lang === 'ar' ? 'نص السؤال (بالعربي)' : 'Question (Arabic)'} value={newQ.text?.ar || ''} onChange={(e) => setNewQ({...newQ, text: {ar: e.target.value, en: e.target.value} as any})} />
                                 
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'نوع السؤال' : 'Question Type'}</label>
-                                    <select value={newQ.type ?? "mc"} onChange={(e) => {
+                                    <select value={newQ.type} onChange={(e) => {
                                         const type = e.target.value as any;
                                         setNewQ({...newQ, type, correctAnswer: type === 'tf' ? 'True' : ''});
                                     }} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
@@ -2035,7 +1934,7 @@ const AdminResults = () => {
                                     <div className="space-y-4 p-4 rounded-3xl bg-alfa-blue/5 border border-alfa-blue/10">
                                         <p className="text-[10px] font-black opacity-30 uppercase tracking-widest text-center">{lang === 'ar' ? 'الخيارات المتاحة' : 'Options'}</p>
                                         {mcOptions.map((opt, i) => (
-                                            <AlfaInput key={i} label={`${lang === 'ar' ? 'الخيار' : 'Option'} ${i + 1}`} value={opt} onChange={(e) => {
+                                            <AlfaInput key={i} label={`${lang === 'ar' ? 'الخيار' : 'Option'} ${i + 1}`} value={opt || ''} onChange={(e) => {
                                                 const newOps = [...mcOptions];
                                                 newOps[i] = e.target.value;
                                                 setMcOptions(newOps);
@@ -2047,18 +1946,18 @@ const AdminResults = () => {
                                 )}
 
                                 <div className="space-y-2">
-                                    <AlfaInput label={lang === 'ar' ? 'الدرجة' : 'Score Points'} type="number" value={newQ.points?.toString() ?? "0"} onChange={(e) => setNewQ({...newQ, points: Number(e.target.value)})} />
+                                    <AlfaInput label={lang === 'ar' ? 'الدرجة' : 'Score Points'} type="number" value={newQ.points?.toString() || ''} onChange={(e) => setNewQ({...newQ, points: Number(e.target.value)})} />
                                 </div>
 
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">{lang === 'ar' ? 'الإجابة الصحيحة' : 'Correct Answer'}</label>
                                     {newQ.type === 'tf' ? (
-                                        <select value={newQ.correctAnswer ?? ""} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
+                                        <select value={newQ.correctAnswer} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
                                             <option value="True">{lang === 'ar' ? 'صح' : 'True'}</option>
                                             <option value="False">{lang === 'ar' ? 'خطأ' : 'False'}</option>
                                         </select>
                                     ) : (
-                                        <select value={newQ.correctAnswer ?? ""} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
+                                        <select value={newQ.correctAnswer} onChange={(e) => setNewQ({...newQ, correctAnswer: e.target.value})} className="w-full h-14 alfa-glass rounded-2xl px-5 font-black text-alfa-blue outline-none border-none shadow-md">
                                             <option value="" disabled>{lang === 'ar' ? 'اختر الإجابة' : 'Select answer'}</option>
                                             {mcOptions.filter(o => o.trim()).map((opt, i) => (
                                                 <option key={i} value={opt}>{opt}</option>
@@ -2068,14 +1967,8 @@ const AdminResults = () => {
                                 </div>
 
                                 <div className="flex flex-col gap-3 mt-8">
-                                    <AlfaButton 
-                                        disabled={isSaving}
-                                        onClick={addQuestion} 
-                                        className="w-full h-14 shadow-lg"
-                                    >
-                                        {isSaving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ السؤال' : 'Save Question')}
-                                    </AlfaButton>
-                                    <AlfaButton variant="outline" onClick={() => { setIsAddModal(false); setEditingQ(null); }} className="w-full h-14 opacity-50">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</AlfaButton>
+                                    <AlfaButton onClick={addQuestion} className="w-full h-14 shadow-lg">{lang === 'ar' ? 'حفظ السؤال' : 'Save Question'}</AlfaButton>
+                                    <AlfaButton variant="outline" onClick={() => setIsAddModal(false)} className="w-full h-14 opacity-50">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</AlfaButton>
                                 </div>
                             </div>
                         </motion.div>
