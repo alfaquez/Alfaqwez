@@ -492,6 +492,10 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
   };
 
   const forceSync = async () => {
+    if (!isSupabaseConfigured) {
+        alert(isRtl ? '⚠️ السيرفر غير متصل. يرجى ضبط مفاتيح Supabase في إعدادات البيئة (Environment Variables).' : '⚠️ Server not connected. Please configure Supabase keys in Environment Variables.');
+        return;
+    }
     addLog("Initiating manual force sync...");
     setDbStatus({ status: 'syncing' });
     try {
