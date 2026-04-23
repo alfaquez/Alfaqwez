@@ -907,7 +907,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     if (!activeExam || !user) return;
     const { score, earned, total } = calculateResultData();
     
-    // 1. Prepare Updated State Locally (Final source of truth)
+    // 1. Prepare Updated State Locally
     const newResult = {
         examId: activeExam.id,
         score: score,
@@ -916,23 +916,30 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         date: new Date().toISOString()
     };
     
+    const existingResults = user.examResults || [];
+    const updatedResults = [...existingResults, newResult];
+    // Recalculate total score from all results for better accuracy
+    const newTotalScore = updatedResults.reduce((acc, res) => acc + (res.score || 0), 0);
+
     const updatedUser: UserData = {
         ...user,
-        totalScore: (user.totalScore || 0) + score, // Cumulative score
+        totalScore: newTotalScore,
         lastScore: score,
-        examResults: [...(user.examResults || []), newResult]
+        examResults: updatedResults
     };
     
-    // Apply locally first to fix the "Zero" issue in UI immediately
+    // Instant UI feedback
     setUser(updatedUser);
     setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
 
     // 2. Persist to Supabase
-    try {
-        // Save to Results table
-        const { error: resErr } = await supabase
-            .from('results')
-            .insert([{
+    if (isSupabaseConfigured) {
+        try {
+            // Log for debugging
+            addLog(`Saving result: ${score}% for exam ${activeExam.id}`);
+            
+            // Save to Results table first
+            const { error: resErr } = await supabase.from('results').insert([{
                 user_id: user.id,
                 exam_id: activeExam.id,
                 score: score,
@@ -940,26 +947,29 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 max_score: total
             }]);
 
-        if (resErr) console.error("Error saving result:", resErr);
+            if (resErr) {
+                addLog("Results Table Error: " + resErr.message);
+                if (resErr.message.includes('policy')) {
+                    alert("⚠️ خطأ في الصلاحيات: جدول النتائج (results) مغلق في سوبابيز. يرجى تشغيل كود فك القفل (RLS) الذي أرسلته لك.");
+                }
+            }
 
-        // Update User profile (try multiple conventions for robustness)
-        const { error: userErr } = await supabase
-            .from('users')
-            .update({ 
-                total_score: updatedUser.totalScore, 
+            // Update User profile (updating both snake_case and camelCase for table compatibility)
+            await supabase.from('users').update({ 
+                total_score: newTotalScore, 
                 last_score: score,
-                totalScore: updatedUser.totalScore,
-                lastScore: score 
-            })
-            .eq('id', user.id);
+                totalScore: newTotalScore,
+                lastScore: score,
+                exam_results: updatedResults
+            }).eq('id', user.id);
             
-        if (userErr) console.error("Error updating user scores:", userErr);
-        
-    } catch (err) {
-        console.error("Database operation failed:", err);
+            addLog("Global Sync: Progress Saved.");
+        } catch (err: any) {
+            console.error("Database Sync Error:", err);
+            addLog("Sync Error: " + err.message);
+        }
     }
 
-    // Move to result screen
     setScreen('result');
   };
 
@@ -970,13 +980,15 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     let totalPossiblePoints = 0;
 
     examQs.forEach(q => {
-      totalPossiblePoints += q.points;
+      // Use question points or default to 10
+      const qPoints = Number(q.points || 10);
+      totalPossiblePoints += qPoints;
       if (answers[q.id] === q.correctAnswer) {
-        earnedPoints += q.points;
+        earnedPoints += qPoints;
       }
     });
 
-    const score = totalPossiblePoints === 0 ? 0 : Math.round((earnedPoints / totalPossiblePoints) * 100);
+    const score = totalPossiblePoints === 0 ? 0 : Math.round((earnedPoints / (totalPossiblePoints || 1)) * 100);
     return { score, earned: earnedPoints, total: totalPossiblePoints };
   };
 
@@ -1060,6 +1072,14 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     );
   };
 
+  const handleLogout = () => {
+    setUser(null);
+    setActiveExam(null);
+    setExamStep(0);
+    setAnswers({});
+    setScreen('login');
+  };
+
   const DashboardScreen = () => (
     <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
@@ -1076,7 +1096,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="w-9 h-9 sm:w-12 sm:h-12 bg-white/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
                     <Globe className="w-4 h-4 sm:w-6 h-6 text-cyan-400" />
                 </button>
-                <button onClick={() => setScreen('login')} className="w-9 h-9 sm:w-12 sm:h-12 bg-alfa-red/80 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
+                <button onClick={handleLogout} className="w-9 h-9 sm:w-12 sm:h-12 bg-alfa-red/80 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg border border-cyan-400/50 shadow-[inset_0_0_5px_white] transition-all">
                     <LogOut className="w-4 h-4 sm:w-6 h-6 text-white" />
                 </button>
             </div>
@@ -1434,7 +1454,7 @@ const AdminResults = () => {
                                         <tbody className="divide-y divide-alfa-blue/5">
                                             {regionUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => {
                                                 const uResults = u.examResults || [];
-                                                const lastResult = uResults[uResults.length - 1];
+                                                // Sort results to show the latest score for this user
                                                 return (
                                                     <tr key={u.id} className="hover:bg-alfa-blue/[0.02] transition-colors">
                                                         <td className="px-6 py-4">
@@ -1445,22 +1465,23 @@ const AdminResults = () => {
                                                         </td>
                                                         <td className="px-6 py-4 text-center font-black text-alfa-blue/40 text-[10px] font-mono">{u.employeeId}</td>
                                                         <td className="px-6 py-4 text-center">
-                                                            <div className="flex flex-col gap-1 items-center">
-                                                                {(u.examResults || []).length > 0 ? (
-                                                                    (u.examResults || []).map(res => {
+                                                            <div className="flex flex-col gap-2 items-center">
+                                                                {uResults.length > 0 ? (
+                                                                    uResults.map((res, idx) => {
                                                                         const isAllowed = (u.allowedRetakes || []).includes(res.examId);
-                                                                        const exName = exams.find(e => e.id === res.examId)?.name[lang as 'ar'|'en'] || 'Exam';
+                                                                        const ex = exams.find(e => e.id === res.examId);
+                                                                        const exName = ex?.name[lang as 'ar'|'en'] || 'Exam';
                                                                         return (
-                                                                            <div key={res.examId} className="flex items-center gap-2 bg-alfa-blue/5 p-2 rounded-lg w-full justify-between min-w-[120px]">
+                                                                            <div key={idx} className="flex items-center gap-3 bg-alfa-blue/5 p-2 rounded-xl w-full justify-between min-w-[180px] border border-black/5">
                                                                                 <div className="flex flex-col items-start px-2">
-                                                                                    <span className="text-[8px] font-black opacity-40 uppercase truncate max-w-[60px]">{exName}</span>
+                                                                                    <span className="text-[8px] font-black opacity-40 uppercase truncate max-w-[80px]">{exName}</span>
                                                                                     <span className="font-black text-alfa-blue text-xs">{res.score}%</span>
                                                                                 </div>
                                                                                 <button 
                                                                                     onClick={() => toggleRetake(u.id, res.examId)} 
-                                                                                    className={`px-3 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all ${isAllowed ? 'bg-amber-100 text-amber-600 border border-amber-200' : 'bg-alfa-blue/10 text-alfa-blue/40 border border-transparent'}`}
+                                                                                    className={`px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${isAllowed ? 'bg-amber-100 text-amber-600 border border-amber-200 shadow-sm' : 'bg-white/60 text-alfa-blue/40 border border-black/5 shadow-sm hover:border-alfa-blue/20'}`}
                                                                                 >
-                                                                                    {isAllowed ? 'Allowed' : 'Allow Retake'}
+                                                                                    {isAllowed ? (lang === 'ar' ? 'مسموح' : 'Allowed') : (lang === 'ar' ? 'سماح بالإعادة' : 'Allow Retake')}
                                                                                 </button>
                                                                             </div>
                                                                         );
@@ -1534,7 +1555,7 @@ const AdminResults = () => {
                 </div>
                 <div className="flex gap-3">
                     <AlfaButton variant="outline" onClick={() => setScreen('dashboard')} className="h-12 sm:h-16 px-6 sm:px-10 !rounded-2xl sm:!rounded-3xl border-alfa-neon-blue/20 text-alfa-blue">{text.back}</AlfaButton>
-                    <AlfaButton variant="danger" onClick={() => setScreen('login')} className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center !p-0 !rounded-2xl sm:!rounded-3xl shadow-neon-red border-alfa-neon-red/30"><LogOut className="w-6 h-6 sm:w-8 sm:h-8" /></AlfaButton>
+                    <AlfaButton variant="danger" onClick={handleLogout} className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center !p-0 !rounded-2xl sm:!rounded-3xl shadow-neon-red border-alfa-neon-red/30"><LogOut className="w-6 h-6 sm:w-8 sm:h-8" /></AlfaButton>
                 </div>
             </header>
 
@@ -2415,11 +2436,27 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
     <div className="min-h-[100dvh] w-full flex flex-col select-none bg-alfa-bg text-alfa-text alfa-app-border">
        <main className="flex-1 w-full relative">
            <AnimatePresence mode="wait">
-            {screen === 'login' && <LoginScreen key="login" />}
-            {screen === 'dashboard' && <DashboardScreen key="dashboard" />}
-            {screen === 'months' && <MonthsScreen key="months" />}
-            {screen === 'exam' && <ExamScreenProxy key="exam" />}
-            {screen === 'result' && <ResultScreen key="result" />}
+                    {screen === 'login' && <LoginScreen key="login" />}
+                    {screen === 'dashboard' && <DashboardScreen key="dashboard" />}
+                    {screen === 'months' && <MonthsScreen key="months" />}
+                    {screen === 'exam' && (
+                        <ExamScreen 
+                            key="exam"
+                            activeExam={activeExam}
+                            questions={questions}
+                            examStep={examStep}
+                            setExamStep={setExamStep}
+                            answers={answers}
+                            setAnswers={setAnswers}
+                            completeExam={completeExam}
+                            lang={lang}
+                            isRtl={isRtl}
+                            text={text}
+                            getExamQuestions={getExamQuestions}
+                            setScreen={setScreen}
+                        />
+                    )}
+                    {screen === 'result' && <ResultScreen key="result" />}
             {screen === 'review' && <ReviewScreen key="review" />}
             {screen === 'leaderboard' && <LeaderboardScreen key="leaderboard" />}
             {screen === 'stats' && <StatsScreen key="stats" />}
