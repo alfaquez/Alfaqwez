@@ -1383,18 +1383,27 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
 
 const AdminResults = () => {
     const exportToCSV = () => {
-        const headers = ["Region,Name,Employee ID,Total Score,Exams Taken\n"];
+        // UTF-8 BOM to make Excel recognize Arabic characters correctly
+        const BOM = "\uFEFF";
+        const headers = [lang === 'ar' ? "الاسم,الكود,المنطقة,الدرجة التراكمية,عدد الاختبارات\n" : "Name,Code,Region,Total Score,Exams Taken\n"];
+        
         const rows = [...MOCK_REGIONS].flatMap(region => {
             const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
-            return regionUsers.map(u => `${lang === 'ar' ? region.name.ar : region.name.en},${u.name},${u.employeeId},${u.totalScore},${(u.examResults || []).length}\n`);
+            return regionUsers.map(u => {
+                const regionName = lang === 'ar' ? region.name.ar : region.name.en;
+                // Escaping commas just in case names have them
+                const name = `"${u.name}"`;
+                const code = `"${u.employeeId}"`;
+                return `${name},${code},${regionName},${u.totalScore},${(u.examResults || []).length}\n`;
+            });
         });
         
-        const blob = new Blob([...headers, ...rows], { type: 'text/csv' });
+        const blob = new Blob([BOM, ...headers, ...rows], { type: 'text/csv;charset=utf-8' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.setAttribute('hidden', '');
         a.setAttribute('href', url);
-        a.setAttribute('download', 'employee_results_by_region.csv');
+        a.setAttribute('download', `Alfa_Results_${new Date().toLocaleDateString()}.csv`);
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
