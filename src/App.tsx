@@ -415,6 +415,24 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'synced' | 'pending' | 'error'>('synced');
   const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [manualUrl, setManualUrl] = useState(import.meta.env.VITE_SUPABASE_URL || '');
+  const [manualKey, setManualKey] = useState(import.meta.env.VITE_SUPABASE_ANON_KEY || '');
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+  const saveManualConfig = () => {
+    if (!manualUrl.startsWith('http') || manualKey.length < 20) {
+        alert(isRtl ? '⚠️ يرجى التأكد من كتابة الرابط والمفتاح بشكل صحيح من Supabase.' : '⚠️ Please ensure the URL and Key are entered correctly from Supabase.');
+        return;
+    }
+    setIsSavingConfig(true);
+    localStorage.setItem('ALFA_MANUAL_DB_URL', manualUrl);
+    localStorage.setItem('ALFA_MANUAL_DB_KEY', manualKey);
+    setTimeout(() => {
+        setIsSavingConfig(false);
+        alert(isRtl ? '✅ تم حفظ الإعدادات يدوياً! سيتم إعادة تحميل التطبيق للاتصال بالسيرفر الجديد.' : '✅ Config saved manually! App will reload to connect to the new server.');
+        window.location.reload();
+    }, 1000);
+  };
 
   const setScreen = (newScreen: Screen, pushHistory: boolean = true) => {
     if (pushHistory) {
@@ -466,7 +484,7 @@ export default function App() {
   }, [screenHistory, screen]);
 
   // Stateful Data - Initialize as empty to force DB fetch
-  const isSupabaseConfigured = import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder');
+  const isSupabaseConfigured = (import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder')) || (typeof window !== 'undefined' && !!localStorage.getItem('ALFA_MANUAL_DB_URL'));
   
   const addLog = (msg: string) => {
     console.log(`[ALFA-LOG] ${msg}`);
@@ -1625,7 +1643,53 @@ const AdminResults = () => {
                     </div>
 
                     <div className="mt-6 border-t border-black/5 pt-6 flex flex-col gap-3">
-                        <p className="text-[10px] font-black text-alfa-blue opacity-40 uppercase tracking-widest">Emergency Sync Tools</p>
+                        <div className="p-5 bg-amber-50 rounded-[2rem] border border-amber-200">
+                            <h3 className="text-sm font-black text-amber-800 uppercase tracking-tight mb-4 flex items-center gap-2">
+                                <Settings className="w-4 h-4" /> {isRtl ? 'الربط اليدوي السريع (حل الطوارئ)' : 'Manual Connection Override'}
+                            </h3>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-[10px] font-black opacity-40 uppercase ml-2">Supabase URL</label>
+                                    <input 
+                                        type="text" 
+                                        value={manualUrl} 
+                                        onChange={(e) => setManualUrl(e.target.value)}
+                                        placeholder="https://xyz.supabase.co"
+                                        className="w-full h-12 bg-white rounded-2xl px-4 text-xs font-mono border border-black/5 focus:border-alfa-blue outline-none transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black opacity-40 uppercase ml-2">Anon API Key</label>
+                                    <input 
+                                        type="password" 
+                                        value={manualKey} 
+                                        onChange={(e) => setManualKey(e.target.value)}
+                                        placeholder="eyJhbGciOiJIUzI1NiIsInR..."
+                                        className="w-full h-12 bg-white rounded-2xl px-4 text-xs font-mono border border-black/5 focus:border-alfa-blue outline-none transition-all"
+                                    />
+                                </div>
+                                <AlfaButton 
+                                    onClick={saveManualConfig}
+                                    className="w-full bg-amber-500 hover:bg-amber-600 h-12 text-xs"
+                                    disabled={isSavingConfig}
+                                >
+                                    {isSavingConfig ? (isRtl ? 'جاري الحفظ...' : 'Saving...') : (isRtl ? 'حفظ وربط السيرفر الآن' : 'Save & Connect Now')}
+                                </AlfaButton>
+                                <p className="text-[9px] font-bold text-amber-600/60 mt-2 text-center">
+                                    {isRtl ? 'استخدم هذا الخيار إذا كان الربط التلقائي لا يعمل.' : 'Use this option if automatic connection fails.'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 mt-4">
+                        <p className="text-[10px] font-black text-alfa-blue opacity-40 uppercase tracking-widest">Database Debug Info</p>
+                        <div className="p-3 bg-black/5 rounded-xl font-mono text-[10px] break-all border border-black/5">
+                            <p>URL: <span className="text-emerald-600">{import.meta.env.VITE_SUPABASE_URL ? import.meta.env.VITE_SUPABASE_URL.substring(0, 15) + '...' : 'MISSING'}</span></p>
+                            <p>KEY: <span className="text-amber-600">{import.meta.env.VITE_SUPABASE_ANON_KEY ? import.meta.env.VITE_SUPABASE_ANON_KEY.substring(0, 10) + '...' : 'MISSING'}</span></p>
+                            <p>STX: <span className="text-blue-600">{isSupabaseConfigured ? 'VITE_PREFIX_OK' : 'MISCONFIGURED'}</span></p>
+                        </div>
+
+                        <p className="text-[10px] font-black text-alfa-blue opacity-40 uppercase tracking-widest mt-2">Emergency Sync Tools</p>
                         <AlfaButton variant="outline" className="h-14 !shadow-none border-dashed border-2 border-amber-500/20 text-amber-600" onClick={() => {
                             const sql = `ALTER TABLE exams ADD COLUMN IF NOT EXISTS points int8 DEFAULT 100;
 ALTER TABLE exams ADD COLUMN IF NOT EXISTS type text DEFAULT 'monthly';
@@ -1661,6 +1725,7 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
                     </div>
                 </div>
             </div>
+        </div>
 
             <AlfaCard className="border-emerald-500/20 bg-emerald-50/20 mt-6 overflow-hidden !rounded-[3rem]">
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-6 p-4">
