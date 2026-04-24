@@ -1205,11 +1205,9 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
             </div>
         </header>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
+        <div className="grid grid-cols-2 gap-2 sm:gap-4 shrink-0">
             <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
             <AlfaCard title={`⭐ ${user?.totalScore?.toLocaleString() ?? '0'}`} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
-            <AlfaCard title="🎖️ Elite" subtitle="RANK" className="hidden lg:block border-l-4 border-l-amber-500 !p-4 sm:!p-6" />
-            <AlfaCard title="💎 7" subtitle="BADGES" className="hidden lg:block border-l-4 border-l-purple-500 !p-4 sm:!p-6" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-6 flex-1 min-h-0">
@@ -1501,7 +1499,7 @@ const AdminResults = () => {
             // Generate dynamic headers for questions
             const questionHeaders = examQs.map((q, idx) => `Q${idx+1}: ${q.text[lang as 'ar'|'en'].replace(/,/g, ' ')}`).join(',');
             headers = lang === 'ar' 
-                ? `اسم الموظف,الكود,المنطقة,الدرجة,النسبة المئوية,اسم الاختبار,${questionHeaders}\n` 
+                ? `اسم الموظف,الكود,المنطقة,النقاط,النسبة المئوية,اسم الاختبار,${questionHeaders}\n` 
                 : `Employee Name,Employee ID,Region,Score Points,Percentage,Exam Name,${questionHeaders}\n`;
             
             const examResults = users.filter(u => u.role === 'user').flatMap(u => {
@@ -1589,9 +1587,10 @@ const AdminResults = () => {
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'اسم الموظف' : 'Name'}</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'الكود' : 'Code'}</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'المنطقة' : 'Region'}</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'النقاط' : 'Points'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'الدرجة' : 'Score'}</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'النسبة' : 'Percentage'}</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">Action</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'حذف' : 'Delete'}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-alfa-blue/5">
@@ -1614,6 +1613,39 @@ const AdminResults = () => {
                                                         className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${isAllowed ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue/40'}`}
                                                     >
                                                         {isAllowed ? 'ALLOWED' : 'ALLOW RETAKE'}
+                                                    </button>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <button 
+                                                        onClick={async () => {
+                                                            if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذه النتيجة؟ سيتم تصفير درجة الموظف لهذا الاختبار.' : 'Are you sure you want to delete this result? The employee score for this exam will be reset.')) return;
+                                                            try {
+                                                                // Delete from Supabase
+                                                                const { error: resErr } = await supabase.from('results').delete().eq('user_id', u.id).eq('exam_id', selectedExamId);
+                                                                if (resErr) throw resErr;
+
+                                                                // Update User locally and in DB
+                                                                const updatedResults = u.examResults!.filter(r => r.examId !== selectedExamId);
+                                                                const newTotal = updatedResults.reduce((acc, r) => acc + (r.score || 0), 0);
+                                                                const newLast = updatedResults.length > 0 ? updatedResults[updatedResults.length - 1].score : 0;
+
+                                                                await supabase.from('users').update({
+                                                                    total_score: newTotal,
+                                                                    last_score: newLast,
+                                                                    totalScore: newTotal,
+                                                                    lastScore: newLast,
+                                                                    exam_results: updatedResults
+                                                                }).eq('id', u.id);
+
+                                                                setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, totalScore: newTotal, lastScore: newLast, examResults: updatedResults } : usr));
+                                                                addLog(`Result deleted for user ${u.id}`);
+                                                            } catch (err: any) {
+                                                                alert("Error deleting result: " + err.message);
+                                                            }
+                                                        }}
+                                                        className="p-2 rounded-lg bg-red-50 text-alfa-red hover:bg-red-100"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </td>
                                             </tr>
@@ -2141,61 +2173,6 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
     );
   };
 
-  const LeaderboardScreen = () => (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto flex flex-col gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
-        <header className="flex items-center gap-4 mb-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue/20" />
-            <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-14 sm:h-14 bg-white/10 alfa-glass rounded-xl flex items-center justify-center shadow-md active:scale-95 transition-all text-white border-white/20 relative z-10">
-                <ArrowLeft className={`w-6 h-6 ${isRtl ? 'rotate-180' : ''}`} />
-            </button>
-            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight relative z-10">{lang === 'ar' ? 'أفضل الموظفين' : 'Top Employees'}</h1>
-        </header>
-        <div className="space-y-4">
-            {users.filter(u => u.role === 'user').sort((a,b) => b.totalScore - a.totalScore).map((u, i) => (
-                <div key={u.id} className="alfa-glass rounded-[2rem] p-6 flex justify-between items-center bg-white/40 border-white shadow-xl">
-                    <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-alfa-blue'}`}>
-                           {i + 1}
-                        </div>
-                        <div>
-                            <h3 className="font-black text-alfa-blue text-lg sm:text-2xl leading-tight">{u.name}</h3>
-                            <p className="text-[10px] sm:text-xs font-black opacity-30 uppercase tracking-[0.2em]">{u.employeeId}</p>
-                        </div>
-                    </div>
-                    <div className="text-right">
-                        <span className="font-black text-sm sm:text-xl text-alfa-blue block">{u?.totalScore?.toLocaleString() ?? '0'} pt</span>
-                        <span className="text-[10px] sm:text-xs font-black opacity-20 uppercase tracking-[0.3em]">Total Points</span>
-                    </div>
-                </div>
-            ))}
-        </div>
-    </div>
-  );
-
-  const StatsScreen = () => (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto flex flex-col gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
-        <header className="flex items-center gap-4 mb-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue/20" />
-            <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-14 sm:h-14 bg-white/10 alfa-glass rounded-xl flex items-center justify-center shadow-md active:scale-95 transition-all text-white border-white/20 relative z-10">
-                <ArrowLeft className={`w-6 h-6 ${isRtl ? 'rotate-180' : ''}`} />
-            </button>
-            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight relative z-10">📉 {lang === 'ar' ? 'إحصائياتي' : 'My Statistics'}</h1>
-        </header>
-        <div className="grid grid-cols-2 gap-4">
-            <AlfaCard title={`${user?.lastScore}%`} subtitle={text.latestResult} />
-            <AlfaCard title={user?.totalScore?.toLocaleString() ?? '0'} subtitle={text.totalExp} />
-        </div>
-        <AlfaCard title="📈 Monthly Performance">
-            <div className="h-48 w-full mt-4">
-               <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={MOCK_PROGRESS}>
-                    <Area type="monotone" dataKey="score" stroke="#002855" strokeWidth={3} fill="#002855" fillOpacity={0.05} />
-                  </AreaChart>
-               </ResponsiveContainer>
-            </div>
-        </AlfaCard>
-    </div>
-  );
 
   const AlfaBottomNav = () => {
     if (screen === 'login' || screen === 'exam') return null;
@@ -2208,10 +2185,8 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
     ];
 
     const userItems = [
-        { id: 'months', icon: <Shield className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📝 الاختبارات' : '📝 Exams' },
-        { id: 'stats', icon: <Activity className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📈 النتائج' : '📈 Results' },
         { id: 'dashboard', icon: <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📊 الإحصائيات' : '📊 Stats' },
-        { id: 'leaderboard', icon: <Trophy className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '🏆 الأفضل' : '🏆 Top' },
+        { id: 'months', icon: <Shield className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📝 الاختبارات' : '📝 Exams' },
     ];
 
     const items = user?.role === 'admin' ? adminItems : userItems;
@@ -2716,8 +2691,6 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
                     )}
                     {screen === 'result' && <ResultScreen key="result" />}
             {screen === 'review' && <ReviewScreen key="review" />}
-            {screen === 'leaderboard' && <LeaderboardScreen key="leaderboard" />}
-            {screen === 'stats' && <StatsScreen key="stats" />}
             {screen === 'admin_dashboard' && <AdminDashboard key="admin" />}
             {screen === 'admin_users' && <AdminUsers key="admin_users" />}
             {screen === 'admin_exams' && <AdminExams key="admin_exams" />}
