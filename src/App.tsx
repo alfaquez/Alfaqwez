@@ -5,7 +5,7 @@ import {
   Lock, Shield, User, Key, BarChart3, Trophy, 
   ChevronRight, Timer, CheckCircle2, XCircle, 
   ArrowLeft, AlertTriangle, List, Plus, Trash2, Edit2,
-  Calendar, Award, Briefcase, Zap, Cpu, Settings,
+  Calendar, Award, Briefcase, Zap, Cpu, Settings, Search, UserCheck,
   LogOut, Globe, ClipboardList, Info, Download, FileSpreadsheet,
   TrendingUp, Activity, Frown, PartyPopper, AlertCircle, RefreshCcw, UploadCloud
 } from 'lucide-react';
@@ -28,7 +28,7 @@ interface ExamResult {
   score: number;
   rawScore: number;
   maxScore: number;
-  date: string;
+  answers?: Record<string, string>;
 }
 
 interface UserData {
@@ -176,38 +176,48 @@ const MOCK_REGIONS = [
 
 // --- Mock Data ---
 const MOCK_MONTHS: ExamMonth[] = [
-  { id: '1', name: { ar: 'يناير', en: 'January' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'monthly' },
-  { id: '2', name: { ar: 'فبراير', en: 'February' }, status: 'active', duration: 300, questions: ['q1', 'q3'], points: 100, type: 'monthly' },
-  { id: '3', name: { ar: 'مارس', en: 'March' }, status: 'active', duration: 600, questions: ['q2', 'q3'], points: 100, type: 'monthly' },
-  { id: 'T1', name: { ar: 'تدريب المهارات الأساسية', en: 'Basic Skills Training' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'training', groupName: 'Group A' },
+  { id: '1', name: { ar: 'يناير 2025', en: 'January 2025' }, status: 'active', duration: 1200, questions: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10'], points: 100, type: 'monthly' },
+  { id: '2', name: { ar: 'فبراير 2025', en: 'February 2025' }, status: 'active', duration: 1200, questions: ['q11', 'q12', 'q13', 'q14', 'q15', 'q16', 'q17', 'q18', 'q19', 'q20'], points: 100, type: 'monthly' },
+  { id: '3', name: { ar: 'مارس 2025', en: 'March 2025' }, status: 'active', duration: 1200, questions: ['q21', 'q22', 'q23', 'q24', 'q25', 'q26', 'q27', 'q28', 'q29', 'q30'], points: 100, type: 'monthly' },
+  { id: 'T1', name: { ar: 'تدريب مكافحة العدوى', en: 'Infection Control Training' }, status: 'active', duration: 600, questions: ['q1', 'q3', 'q5', 'q7', 'q9'], points: 50, type: 'training', groupName: 'Quality' },
 ];
 
 const MOCK_QUESTIONS: Question[] = [
-  { 
-    id: 'q1', 
-    text: { ar: 'هل يجب تعقيم الأدوات بعد كل عينة؟', en: 'Should tools be sterilized after every sample?' }, 
-    type: 'tf', 
-    correctAnswer: 'True',
-    category: { ar: 'إجراءات المختبر', en: 'Lab Procedures' },
-    points: 50
-  },
-  { 
-    id: 'q2', 
-    text: { ar: 'ما هو اللون القياسي لعينات الدم الوريدي؟', en: 'What is the standard color for venous blood samples?' }, 
-    type: 'mc', 
-    options: { ar: ['أحمر', 'أزرق', 'أخضر', 'أسود'], en: ['Red', 'Blue', 'Green', 'Black'] }, 
-    correctAnswer: 'Red',
-    category: { ar: 'أساسيات التحليل', en: 'Analysis Basics' },
-    points: 50
-  },
-  { 
-    id: 'q3', 
-    text: { ar: 'يتم حفظ العينات في درجة حرارة الغرفة لمجمعات الأنسجة.', en: 'Samples are stored at room temperature for tissue clusters.' }, 
-    type: 'tf', 
-    correctAnswer: 'False',
-    category: { ar: 'التخزين', en: 'Storage' },
-    points: 50
-  },
+  // --- January Set (Infection Control & Safety) ---
+  { id: 'q1', text: { ar: 'هل يجب غسل اليدين قبل وبعد التعامل مع كل مريض؟', en: 'Should hands be washed before and after handling every patient?' }, type: 'tf', correctAnswer: 'True', category: { ar: 'مكافحة العدوى', en: 'Infection Control' }, points: 10 },
+  { id: 'q2', text: { ar: 'ما هو التركيز المناسب للكحول المستخدم لتطهير الجلد قبل سحب العينة؟', en: 'What is the appropriate alcohol concentration for skin disinfection before sampling?' }, type: 'mc', options: { ar: ['50%', '70%', '95%', '100%'], en: ['50%', '70%', '95%', '100%'] }, correctAnswer: '70%', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
+  { id: 'q3', text: { ar: 'يتم التخلص من الإبر المستخدمة في صندوق الأمان (Safety Box).', en: 'Used needles should be disposed of in a Safety Box.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
+  { id: 'q4', text: { ar: 'ما هو الإجراء الأول عند سكب عينة دم على الأرض؟', en: 'What is the first step when a blood sample spills on the floor?' }, type: 'mc', options: { ar: ['المسح بالماء فقط', 'تغطيتها بمناديل ووضع كلور مخفف 1:10', 'تركها لتجف', 'إبلاغ المدير فقط'], en: ['Mop with water', 'Cover with tissues and add 1:10 diluted bleach', 'Leave it to dry', 'Inform the manager only'] }, correctAnswer: 'تغطيتها بمناديل ووضع كلور مخفف 1:10', category: { ar: 'مكافحة العدوى', en: 'Infection Control' }, points: 10 },
+  { id: 'q5', text: { ar: 'يجب ارتداء القفازات أثناء سحب عينات الدم.', en: 'Gloves must be worn during blood collection.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
+  { id: 'q6', text: { ar: 'ما هو الوقت المسموح به لترك التورنيكيه (الرباط الضاغط) على ذراع المريض؟', en: 'How long can a tourniquet be left on a patient\'s arm?' }, type: 'mc', options: { ar: ['أقل من دقيقة', '5 دقائق', '10 دقائق', 'حتى اكتمال سحب العينة'], en: ['Less than 1 minute', '5 minutes', '10 minutes', 'Until collection is complete'] }, correctAnswer: 'أقل من دقيقة', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
+  { id: 'q7', text: { ar: 'يتم حفظ عينات البول العادية في درجة حرارة الغرفة لمدة 24 ساعة.', en: 'Normal urine samples are stored at room temperature for 24 hours.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'التخزين', en: 'Storage' }, points: 10 },
+  { id: 'q8', text: { ar: 'ما هو اللون القياسي لأنبوب عينة صورة الدم كاملة (CBC)؟', en: 'What is the standard tube color for a Complete Blood Count (CBC)?' }, type: 'mc', options: { ar: ['أحمر', 'أصفر', 'أرجواني (Lavender)', 'أزرق'], en: ['Red', 'Yellow', 'Lavender', 'Blue'] }, correctAnswer: 'أرجواني (Lavender)', category: { ar: 'أنابيب العينات', en: 'Sample Tubes' }, points: 10 },
+  { id: 'q9', text: { ar: 'يجب مطابقة اسم المريض مع الكود الموجود على الأنبوبة قبل السحب.', en: 'Patient name must be matched with the tube code before collection.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
+  { id: 'q10', text: { ar: 'ما هو الترتيب الصحيح لسحب الأنابيب (Order of Draw)؟', en: 'What is the correct Order of Draw?' }, type: 'mc', options: { ar: ['أحمر ثم أزرق', 'أزرق ثم أحمر ثم أرجواني', 'أرجواني ثم أزرق', 'أي ترتيب'], en: ['Red then Blue', 'Blue then Red then Lavender', 'Lavender then Blue', 'Any order'] }, correctAnswer: 'أزرق ثم أحمر ثم أرجواني', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
+
+  // --- February Set (Equipment & Analysis) ---
+  { id: 'q11', text: { ar: 'يجب تنظيف جهاز السنترفيوج بشكل دوري عند انسكاب أي عينة داخله.', en: 'The centrifuge must be cleaned periodically if any sample spills inside.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'الأجهزة', en: 'Equipment' }, points: 10 },
+  { id: 'q12', text: { ar: 'أين يتم تخزين الكيماويات القابلة للاشتعال؟', en: 'Where should flammable chemicals be stored?' }, type: 'mc', options: { ar: ['بجانب الحوض', 'في دواليب خشبية', 'في كبينة تخزين مضادة للحريق', 'تحت التكييف'], en: ['Beside the sink', 'In wooden cabinets', 'In a fire-rated storage cabinet', 'Under the AC'] }, correctAnswer: 'في كبينة تخزين مضادة للحريق', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
+  { id: 'q13', text: { ar: 'يعتبر الهيبارين مادة مانعة للتجلط تستخدم لسحب غازات الدم.', en: 'Heparin is an anticoagulant used for blood gases.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'أنابيب العينات', en: 'Sample Tubes' }, points: 10 },
+  { id: 'q14', text: { ar: 'أي أنبوب يستخدم لاختبارات سيولة الدم (PT/PTT)؟', en: 'Which tube is used for coagulation tests (PT/PTT)?' }, type: 'mc', options: { ar: ['سترات الصوديوم (أزرق)', 'EDTA (أرجواني)', 'أحمر', 'هيبارين (أخضر)'], en: ['Sodium Citrate (Blue)', 'EDTA (Lavender)', 'Red', 'Heparin (Green)'] }, correctAnswer: 'سترات الصوديوم (أزرق)', category: { ar: 'أنابيب العينات', en: 'Sample Tubes' }, points: 10 },
+  { id: 'q15', text: { ar: 'يمكن إعادة سحب عينة من ذراع به "كانولا" محاليل نشطة.', en: 'A sample can be collected from an arm with an active IV cannula.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
+  { id: 'q16', text: { ar: 'ما هو الإجراء المتبع عند استلام عينة متجلطة لصورة الدم؟', en: 'What is the procedure when receiving a clotted CBC sample?' }, type: 'mc', options: { ar: ['تحميلها على الجهاز', 'رفض العينة وطلب إعادة سحب', 'محاولة فك التجلط', 'كتابة النتيجة يدوياً'], en: ['Load it on the machine', 'Reject sample and request redraw', 'Try to break the clot', 'Write results manually'] }, correctAnswer: 'رفض العينة وطلب إعادة سحب', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
+  { id: 'q17', text: { ar: 'يجب فصل السيرم عن الخلايا في أسرع وقت ممكن (يفضل في خلال ساعتين).', en: 'Serum must be separated from cells as soon as possible (preferably within 2 hours).' }, type: 'tf', correctAnswer: 'True', category: { ar: 'تجهيز العينات', en: 'Processing' }, points: 10 },
+  { id: 'q18', text: { ar: 'ما هي درجة الحرارة المثالية لحفظ الثلاجة في المختبر؟', en: 'What is the ideal temperature for a lab refrigerator?' }, type: 'mc', options: { ar: ['-20 درجة', '0 درجة', '2-8 درجة مئوية', '25 درجة'], en: ['-20 degrees', '0 degrees', '2-8 degrees Celsius', '25 degrees'] }, correctAnswer: '2-8 درجة مئوية', category: { ar: 'الأجهزة', en: 'Equipment' }, points: 10 },
+  { id: 'q19', text: { ar: 'عينات السكر الصائم تتطلب صيام 4 ساعات فقط.', en: 'Fasting blood sugar samples require only 4 hours of fasting.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'أساسيات التحليل', en: 'Analysis Basics' }, points: 10 },
+  { id: 'q20', text: { ar: 'لماذا يتم تقليب أنابيب EDTA بلطف بعد السحب مباشرة؟', en: 'Why are EDTA tubes gently inverted immediately after collection?' }, type: 'mc', options: { ar: ['لتفتيت الخلايا', 'لمنع التجلط عن طريق خلط الدم بالمادة المانعة', 'لتسريع التجلط', 'للتبريد'], en: ['To break cells', 'To prevent clotting by mixing blood with anticoagulant', 'To speed up clotting', 'To cool'] }, correctAnswer: 'لمنع التجلط عن طريق خلط الدم بالمادة المانعة', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
+
+  // --- March Set (Customer Service & Ethics) ---
+  { id: 'q21', text: { ar: 'يجب الحفاظ على سرية بيانات المريض ونتائج تحاليله.', en: 'Patient data and results must remain confidential.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'الأخلاقيات', en: 'Ethics' }, points: 10 },
+  { id: 'q22', text: { ar: 'ما هو الرد المناسب إذا سألك المريض عن تشخيص حالته بناءً على العينة؟', en: 'What is the appropriate response if a patient asks for a diagnosis based on their sample?' }, type: 'mc', options: { ar: ['إعطاؤه تشخيصاً سريعاً', 'إبلاغه بأن الطبيب المعالج هو المختص بتفسير النتائج', 'تجاهل السؤال', 'إخباره بأسوأ الاحتمالات'], en: ['Give quick diagnosis', 'Tell them the treating physician is responsible for interpretation', 'Ignore the question', 'Tell them the worst-case scenario'] }, correctAnswer: 'إبلاغه بأن الطبيب المعالج هو المختص بتفسير النتائج', category: { ar: 'خدمة العملاء', en: 'Customer Service' }, points: 10 },
+  { id: 'q23', text: { ar: 'يمكن إعطاء نتائج التحاليل بالهاتف للأقارب دون التأكد من هويتهم.', en: 'Results can be given over the phone to relatives without verifying identity.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'الأخلاقيات', en: 'Ethics' }, points: 10 },
+  { id: 'q24', text: { ar: 'ماذا تفعل إذا لاحظت خطأ في بيانات المريض على السيستم؟', en: 'What do you do if you notice an error in patient data on the system?' }, type: 'mc', options: { ar: ['إصلاحه فوراً وإبلاغ المشرف', 'تركه كما هو', 'حذف البيانات', 'تصحيحه باليد على الورق فقط'], en: ['Fix immediately and inform supervisor', 'Leave as is', 'Delete data', 'Correct by hand on paper only'] }, correctAnswer: 'إصلاحه فوراً وإبلاغ المشرف', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
+  { id: 'q25', text: { ar: 'يعتبر التعامل بابتسامة وهدوء جزءاً أساسياً من جودة الخدمة.', en: 'Smiling and calm handling is a core part of service quality.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'خدمة العملاء', en: 'Customer Service' }, points: 10 },
+  { id: 'q26', text: { ar: 'أي من هذه السلوكيات غير احترافي في المختبر؟', en: 'Which of these behaviors is unprofessional in the lab?' }, type: 'mc', options: { ar: ['ارتداء البالطو', 'الأكل والشرب في منطقة العمل', 'غسل اليدين', 'استخدام الباركود'], en: ['Wearing lab coat', 'Eating/drinking in work area', 'Hand washing', 'Using barcodes'] }, correctAnswer: 'الأكل والشرب في منطقة العمل', category: { ar: 'الأخلاقيات', en: 'Ethics' }, points: 10 },
+  { id: 'q27', text: { ar: 'يجب شرح إجراءات السحب للمريض لتقليل توتره.', en: 'Sampling procedures should be explained to the patient to reduce anxiety.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'خدمة العملاء', en: 'Customer Service' }, points: 10 },
+  { id: 'q28', text: { ar: 'ما هو التصرف الصحيح مع مريض يشعر بالإغماء أثناء السحب؟', en: 'What is the correct action for a patient feeling faint during sampling?' }, type: 'mc', options: { ar: ['الاستمرار في السحب', 'إيقاف السحب فوراً ومساعدة المريض على الاستلقاء', 'تركه يمشي', 'إعطاؤه ماء مثلج فوراً'], en: ['Continue collection', 'Stop immediately and help patient lie down', 'Let them walk', 'Give ice water immediately'] }, correctAnswer: 'إيقاف السحب فوراً ومساعدة المريض على الاستلقاء', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
+  { id: 'q29', text: { ar: 'يمكن للموظف ترك العينة المكسورة في مكانها حتى نهاية الوردية.', en: 'An employee can leave a broken sample in place until the end of the shift.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
+  { id: 'q30', text: { ar: 'ما هو دور الموظف في تحقيق رؤية مختبرات ألفا؟', en: 'What is the employee\'s role in achieving Alfa Labs\' vision?' }, type: 'mc', options: { ar: ['الالتزام بمعايير الجودة والسرعة', 'العمل فقط وقت الحاجة', 'توفير التكاليف على حساب الجودة', 'تجاهل الشكاوى'], en: ['Commitment to quality and speed standards', 'Work only when needed', 'Reduce costs at quality\'s expense', 'Ignore complaints'] }, correctAnswer: 'الالتزام بمعايير الجودة والسرعة', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
 ];
 
 const MOCK_PROGRESS = [
@@ -409,9 +419,9 @@ export default function App() {
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
   const [user, setUser] = useState<UserData | null>(null);
   const [users, setUsers] = useState<UserData[]>([]);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [exams, setExams] = useState<ExamMonth[]>([]);
-  const [globalCounts, setGlobalCounts] = useState({ exams: 0, questions: 0 });
+  const [questions, setQuestions] = useState<Question[]>(MOCK_QUESTIONS);
+  const [exams, setExams] = useState<ExamMonth[]>(MOCK_MONTHS);
+  const [globalCounts, setGlobalCounts] = useState({ exams: MOCK_MONTHS.length, questions: MOCK_QUESTIONS.length });
   const [syncStatus, setSyncStatus] = useState<'synced' | 'pending' | 'error'>('synced');
   const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -932,6 +942,48 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     }
   };
 
+  const resetAllScores = async () => {
+    if (!confirm(lang === 'ar' ? '⚠️ تحذير: هل أنت متأكد من مسح جميع نتائج الموظفين وتصفير النقاط نهائياً؟' : '⚠️ Warning: Are you sure you want to permanently clear all employee results and reset points to zero?')) return;
+    
+    setUsers(prev => prev.map(u => u.role === 'admin' ? u : ({
+        ...u,
+        totalScore: 0,
+        lastScore: 0,
+        examResults: [],
+        allowedRetakes: []
+    })));
+    
+    if (isSupabaseConfigured) {
+        try {
+            // Delete all records from results table
+            const { error: delErr } = await supabase.from('results').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            if (delErr) console.error("Results reset error:", delErr);
+            
+            // Reset users table
+            const { error: userErr } = await supabase.from('users').update({
+                total_score: 0,
+                last_score: 0,
+                totalScore: 0,
+                lastScore: 0,
+                exam_results: [],
+                examResults: [],
+                allowed_retakes: [],
+                allowedRetakes: []
+            }).eq('role', 'user');
+            
+            if (userErr) throw userErr;
+            
+            addLog("System Reset: All scores cleared.");
+            alert(lang === 'ar' ? "تم تصفير جميع البيانات بنجاح" : "All scores reset successfully");
+        } catch (err: any) {
+            console.error("Reset Failure:", err);
+            alert("Reset Error: " + err.message);
+        }
+    } else {
+        alert("Not connected to Supabase.");
+    }
+  };
+
   const calculateScore = () => {
     if (!activeExam) return 0;
     let earnedPoints = 0;
@@ -957,7 +1009,8 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         score: score,
         rawScore: earned,
         maxScore: total,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        answers: { ...answers }
     };
     
     const existingResults = user.examResults || [];
@@ -993,7 +1046,8 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 exam_id: activeExam.id,
                 score: score,
                 raw_score: earned,
-                max_score: total
+                max_score: total,
+                answers: answers
             }]);
 
             if (resErr) {
@@ -1009,7 +1063,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 last_score: score,
                 totalScore: newTotalScore,
                 lastScore: score,
-                exam_results: updatedResults
+                exam_results: finalUniqueResults
             }).eq('id', user.id);
             
             addLog("Global Sync: Progress Saved.");
@@ -1129,14 +1183,6 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     setScreen('login');
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setActiveExam(null);
-    setExamStep(0);
-    setAnswers({});
-    setScreen('login');
-  };
-
   const DashboardScreen = () => (
     <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
@@ -1167,18 +1213,24 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-6 flex-1 min-h-0">
-            <AlfaCard title={text.insights} className="lg:col-span-2 flex flex-col h-full bg-alfa-blue/[0.02]">
-                <div className="flex-1 w-full min-h-[80px] sm:min-h-0">
+            <AlfaCard title={text.insights} className="lg:col-span-3 flex flex-col h-full bg-alfa-blue/[0.02]">
+                <div className="flex-1 w-full min-h-[150px] sm:min-h-[250px]">
                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={MOCK_PROGRESS}>
+                      <AreaChart data={user?.examResults?.map(r => {
+                          const ex = exams.find(e => e.id === r.examId);
+                          return {
+                              name: lang === 'ar' ? (ex?.name.ar || r.examId) : (ex?.name.en || r.examId),
+                              score: r.score
+                          };
+                      }) || MOCK_PROGRESS}>
                         <defs>
                           <linearGradient id="colorAlfa" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#0070f3" stopOpacity={0.2}/>
                             <stop offset="95%" stopColor="#0070f3" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
-                        <XAxis dataKey="name" hide />
-                        <YAxis hide />
+                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#002855' }} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#002855' }} />
                         <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
                         <Area type="monotone" dataKey="score" stroke="#0070f3" strokeWidth={4} fill="url(#colorAlfa)" animationDuration={2000} />
                       </AreaChart>
@@ -1186,24 +1238,8 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 </div>
                 <div className="mt-2 p-2 sm:p-4 bg-alfa-neon-blue/5 rounded-xl border border-alfa-neon-blue/10 backdrop-blur-sm">
                     <p className="text-[9px] sm:text-sm italic font-black text-alfa-blue opacity-70 leading-relaxed font-logo">
-                        {lang === 'ar' ? "أداءك في تحاليل المختبر تطور بشكل ملحوظ. استمر في التميز." : "Lab analytics performance is peaking. Maintain excellence."}
+                        {lang === 'ar' ? "أداءك التراكمي في جميع الاختبارات المكتملة." : "Your cumulative performance across all completed exams."}
                     </p>
-                </div>
-            </AlfaCard>
-
-            <AlfaCard title={text.leaderboard} className="flex flex-col h-full">
-                <div className="flex flex-col gap-2 flex-1 overflow-hidden h-full">
-                    {users.filter(u => u.role === 'user').sort((a,b) => b.totalScore - a.totalScore).slice(0, 3).map((p, i) => (
-                        <div key={i} className="flex justify-between items-center p-2 sm:p-4 rounded-xl sm:rounded-2xl bg-white/50 border border-alfa-neon-blue/5 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 sm:gap-4">
-                                <div className={`w-6 h-6 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-[9px] sm:text-xs font-black shadow-inner ${i === 0 ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue'}`}>
-                                    {i + 1}
-                                </div>
-                                <span className="font-black text-sm sm:text-xl text-alfa-blue tracking-tight">{p.name.split(' ')[0]}</span>
-                            </div>
-                            <span className="font-black text-xs sm:text-lg text-alfa-neon-blue font-logo">{p.totalScore}</span>
-                        </div>
-                    ))}
                 </div>
             </AlfaCard>
         </div>
@@ -1450,6 +1486,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
 
 const AdminResults = () => {
     const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const exportToCSV = (examId?: string) => {
         const BOM = "\uFEFF";
@@ -1459,21 +1496,34 @@ const AdminResults = () => {
         if (examId) {
             // Detailed Exam Report
             const exam = exams.find(e => e.id === examId);
+            const examQs = getExamQuestions(exam!);
+            
+            // Generate dynamic headers for questions
+            const questionHeaders = examQs.map((q, idx) => `Q${idx+1}: ${q.text[lang as 'ar'|'en'].replace(/,/g, ' ')}`).join(',');
             headers = lang === 'ar' 
-                ? "اسم الموظف,الكود,المنطقة,الدرجة,النسبة المئوية,اسم الاختبار\n" 
-                : "Employee Name,Employee ID,Region,Score Points,Percentage,Exam Name\n";
+                ? `اسم الموظف,الكود,المنطقة,الدرجة,النسبة المئوية,اسم الاختبار,${questionHeaders}\n` 
+                : `Employee Name,Employee ID,Region,Score Points,Percentage,Exam Name,${questionHeaders}\n`;
             
             const examResults = users.filter(u => u.role === 'user').flatMap(u => {
                 const res = (u.examResults || []).find(r => r.examId === examId);
                 if (!res) return [];
                 const regionName = MOCK_REGIONS.find(r => r.id === u.region)?.name[lang as 'ar'|'en'] || u.region;
+                
+                // Detailed question answers
+                const userAnswers = examQs.map(q => {
+                    const ans = res.answers?.[q.id];
+                    if (!ans) return '---';
+                    return ans === q.correctAnswer ? '✅' : '❌';
+                });
+
                 return [[
-                    u.name,
-                    u.employeeId,
-                    regionName,
+                    `"${u.name}"`,
+                    `"${u.employeeId}"`,
+                    `"${regionName}"`,
                     res.rawScore || 0,
-                    `${res.score}%`,
-                    exam?.name[lang as 'ar'|'en'] || 'Exam'
+                    `"${res.score}%"`,
+                    `"${exam?.name[lang as 'ar'|'en'] || 'Exam'}"`,
+                    ...userAnswers.map(a => `"${a}"`)
                 ]];
             });
 
@@ -1515,8 +1565,21 @@ const AdminResults = () => {
                             <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">{examUsers.length} Submissions</p>
                         </div>
                     </div>
-                    <AlfaButton onClick={() => exportToCSV(selectedExamId)} variant="outline" className="h-14 px-8 relative z-10 bg-white/10 text-white"><FileSpreadsheet className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'تصدير إكسيل' : 'Export Excel'}</AlfaButton>
+                    <div className="flex gap-2 relative z-10">
+                        <AlfaButton onClick={() => exportToCSV(selectedExamId)} variant="outline" className="h-14 px-8 bg-white/10 text-white"><FileSpreadsheet className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'تصدير إكسيل' : 'Export Excel'}</AlfaButton>
+                    </div>
                 </header>
+
+                <div className="mb-6 relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-alfa-blue/20" />
+                    <input 
+                        type="text" 
+                        placeholder={lang === 'ar' ? 'ابحث عن موظف بالاسم أو الكود...' : 'Search by name or employee ID...'}
+                        className="w-full h-16 pl-12 pr-6 rounded-[1.5rem] bg-white border border-black/5 shadow-sm font-black text-alfa-blue outline-none focus:border-alfa-neon-blue transition-all"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
 
                 <AlfaCard className="overflow-hidden p-0 border-white shadow-2xl">
                     <div className="overflow-x-auto">
@@ -1532,27 +1595,29 @@ const AdminResults = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-alfa-blue/5">
-                                {examUsers.map(u => {
-                                    const res = u.examResults!.find(r => r.examId === selectedExamId)!;
-                                    const region = MOCK_REGIONS.find(r => r.id === u.region);
-                                    const isAllowed = (u.allowedRetakes || []).includes(selectedExamId);
-                                    return (
-                                        <tr key={u.id}>
-                                            <td className="px-6 py-5 font-black text-alfa-blue text-sm">{u.name}</td>
-                                            <td className="px-6 py-5 font-black text-alfa-blue/40 text-[10px]">{u.employeeId}</td>
-                                            <td className="px-6 py-5 font-black text-alfa-blue/60 text-xs">{lang === 'ar' ? region?.name.ar : region?.name.en}</td>
-                                            <td className="px-6 py-5 font-black text-emerald-600 text-sm">{res.rawScore || 0}</td>
-                                            <td className="px-6 py-5 font-black text-alfa-neon-blue text-sm">{res.score}%</td>
-                                            <td className="px-6 py-5">
-                                                <button 
-                                                    onClick={() => toggleRetake(u.id, selectedExamId)}
-                                                    className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${isAllowed ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue/40'}`}
-                                                >
-                                                    {isAllowed ? 'ALLOWED' : 'ALLOW RETAKE'}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
+                                {examUsers
+                                    .filter(u => !searchTerm || u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.employeeId.includes(searchTerm))
+                                    .map(u => {
+                                        const res = u.examResults!.find(r => r.examId === selectedExamId)!;
+                                        const region = MOCK_REGIONS.find(r => r.id === u.region);
+                                        const isAllowed = (u.allowedRetakes || []).includes(selectedExamId);
+                                        return (
+                                            <tr key={u.id}>
+                                                <td className="px-6 py-5 font-black text-alfa-blue text-sm">{u.name}</td>
+                                                <td className="px-6 py-5 font-black text-alfa-blue/40 text-[10px]">{u.employeeId}</td>
+                                                <td className="px-6 py-5 font-black text-alfa-blue/60 text-xs">{lang === 'ar' ? region?.name.ar : region?.name.en}</td>
+                                                <td className="px-6 py-5 font-black text-emerald-600 text-sm">{res.rawScore || 0}</td>
+                                                <td className="px-6 py-5 font-black text-alfa-neon-blue text-sm">{res.score}%</td>
+                                                <td className="px-6 py-5">
+                                                    <button 
+                                                        onClick={() => toggleRetake(u.id, selectedExamId)}
+                                                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${isAllowed ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue/40'}`}
+                                                    >
+                                                        {isAllowed ? 'ALLOWED' : 'ALLOW RETAKE'}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
                                 })}
                             </tbody>
                         </table>
@@ -1598,26 +1663,57 @@ const AdminResults = () => {
             </div>
 
             <div className="mt-12 space-y-8">
-                <div className="flex items-center justify-between px-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4">
                     <h2 className="text-xs font-black text-alfa-blue/40 uppercase tracking-[0.3em]">{lang === 'ar' ? 'النتائج التراكمية حسب المنطقة' : 'Cumulative Results by Region'}</h2>
-                    <AlfaButton variant="outline" className="h-10 text-[9px]" onClick={() => exportToCSV()}><FileSpreadsheet className="w-3 h-3 mr-1" /> Export Regional CSV</AlfaButton>
+                    <div className="flex gap-2">
+                        <AlfaButton variant="outline" className="h-10 text-[9px]" onClick={() => exportToCSV()}><FileSpreadsheet className="w-3 h-3 mr-1" /> Export Regional CSV</AlfaButton>
+                    </div>
+                </div>
+
+                <div className="relative mx-4">
+                    <Search className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-5 h-5 text-alfa-blue/20`} />
+                    <input 
+                        type="text" 
+                        placeholder={lang === 'ar' ? 'ابحث عن موظف بالاسم أو الكود...' : 'Search for an employee...'}
+                        className={`w-full h-14 ${isRtl ? 'pr-12 pl-6' : 'pl-12 pr-6'} rounded-2xl bg-white border border-black/5 shadow-sm font-black text-alfa-blue outline-none focus:border-alfa-neon-blue transition-all`}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                 </div>
                 
                 {MOCK_REGIONS.map(region => {
                     const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
-                    if (regionUsers.length === 0) return null;
-                    const avgScore = Math.round(regionUsers.reduce((acc, u) => acc + (u.totalScore || 0), 0) / regionUsers.length);
+                    
+                    // Filter region users by search term
+                    const filteredUsers = regionUsers.filter(u => 
+                        !searchTerm || 
+                        u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                        u.employeeId.includes(searchTerm)
+                    );
+
+                    // If searching and no results in this region, hide it. 
+                    // If not searching, show region (optional, or hide by default as requested?)
+                    // USER SAID: "تكون فارغه لكي لا تقوم بعمل زحمه" -> Let's show nothing until search term is provided if they want it empty.
+                    if (searchTerm === '' && regionUsers.length > 0) {
+                         // As requested, keep it empty/clean until search? 
+                         // Or maybe just show regions?
+                         // Let's hide the user tables until search is entered.
+                         return null;
+                    }
+
+                    if (filteredUsers.length === 0) return null;
+                    const avgScore = Math.round(filteredUsers.reduce((acc, u) => acc + (u.totalScore || 0), 0) / filteredUsers.length);
 
                     return (
                         <AlfaCard key={region.id} className="border-white shadow-xl overflow-hidden p-0">
                             <div className="p-6 bg-alfa-blue/[0.02] border-b border-alfa-blue/5 flex justify-between items-center">
                                 <div>
                                     <h3 className="text-xl font-black text-alfa-blue">{lang === 'ar' ? region.name.ar : region.name.en}</h3>
-                                    <p className="text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest">{regionUsers.length} Users Found</p>
+                                    <p className="text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest">{filteredUsers.length} Results Found</p>
                                 </div>
                                 <div className="text-right">
                                     <span className="text-2xl font-black text-alfa-neon-blue">{avgScore} pt</span>
-                                    <p className="text-[8px] font-black opacity-30 uppercase">Avg Cumulative</p>
+                                    <p className="text-[8px] font-black opacity-30 uppercase">Avg Performance</p>
                                 </div>
                             </div>
                             <div className="overflow-x-auto">
@@ -1631,11 +1727,11 @@ const AdminResults = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-alfa-blue/5">
-                                        {regionUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => (
+                                        {filteredUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => (
                                             <tr key={u.id}>
                                                 <td className="px-6 py-4 font-black text-alfa-blue text-sm">{u.name}</td>
                                                 <td className="px-6 py-4 font-black text-alfa-blue/40 text-[10px]">{u.employeeId}</td>
-                                                <td className="px-6 py-4 text-center font-black text-alfa-blue/60 text-xs">{(u.examResults || []).length}</td>
+                                                <td className="px-6 py-4 text-center font-black text-alfa-blue/60 text-xs text-center">{(u.examResults || []).length}</td>
                                                 <td className="px-6 py-4 text-right font-black text-alfa-blue text-sm">{u.totalScore}</td>
                                             </tr>
                                         ))}
@@ -1645,6 +1741,13 @@ const AdminResults = () => {
                         </AlfaCard>
                     );
                 })}
+
+                {searchTerm === '' && (
+                    <div className="flex flex-col items-center justify-center py-20 opacity-20">
+                        <UserCheck className="w-20 h-20 mb-4" />
+                        <p className="font-black uppercase tracking-[0.2em] text-sm">{lang === 'ar' ? 'أدخل اسمًا للبحث عن النتائج' : 'Enter a name to view results'}</p>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -1779,6 +1882,10 @@ const AdminResults = () => {
                             const info = `User: ${user?.name} (${user?.id})\nUsers: ${users.length}\nExams: ${exams.length}\nQuestions: ${questions.length}\nEnv: ${import.meta.env.VITE_SUPABASE_URL ? 'Keys Found' : 'Missing Keys'}`;
                             alert(info);
                         }}>Diagnostics</AlfaButton>
+
+                        <AlfaButton variant="danger" className="h-12 text-xs !px-4 shadow-neon-red" onClick={resetAllScores}>
+                            <Trash2 className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'تصفير جميع النتائج' : 'Reset All Scores'}
+                        </AlfaButton>
                     </div>
 
                     <div className="mt-4 p-4 bg-black/5 rounded-xl">
@@ -1850,6 +1957,7 @@ ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_ar text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_en text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS points int8;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_retakes jsonb DEFAULT '[]';
+ALTER TABLE results ADD COLUMN IF NOT EXISTS answers jsonb DEFAULT '{}';
 ALTER TABLE exams DISABLE ROW LEVEL SECURITY;
 ALTER TABLE questions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE results DISABLE ROW LEVEL SECURITY;
