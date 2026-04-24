@@ -5,7 +5,7 @@ import {
   Lock, Shield, User, Key, BarChart3, Trophy, 
   ChevronRight, Timer, CheckCircle2, XCircle, 
   ArrowLeft, AlertTriangle, List, Plus, Trash2, Edit2,
-  Calendar, Award, Briefcase, Zap, Cpu, Settings, Search, UserCheck,
+  Calendar, Award, Briefcase, Zap, Cpu, Settings,
   LogOut, Globe, ClipboardList, Info, Download, FileSpreadsheet,
   TrendingUp, Activity, Frown, PartyPopper, AlertCircle, RefreshCcw, UploadCloud
 } from 'lucide-react';
@@ -19,7 +19,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type Screen = 'login' | 'dashboard' | 'months' | 'exam' | 'result' | 'review' | 'admin_dashboard' | 'admin_users' | 'admin_exams' | 'admin_exam_edit' | 'admin_questions' | 'admin_results' | 'leaderboard' | 'stats';
+type Screen = 'login' | 'dashboard' | 'months' | 'exam' | 'result' | 'review' | 'admin_dashboard' | 'admin_users' | 'admin_exams' | 'admin_exam_edit' | 'admin_questions' | 'admin_results' | 'stats';
 type Lang = 'ar' | 'en';
 
 interface ExamResult {
@@ -28,7 +28,7 @@ interface ExamResult {
   score: number;
   rawScore: number;
   maxScore: number;
-  answers?: Record<string, string>;
+  date: string;
 }
 
 interface UserData {
@@ -55,6 +55,7 @@ interface ExamMonth {
   points: number;
   type?: 'monthly' | 'training';
   groupName?: string;
+  allowedRegions?: string[]; // Array of region IDs
 }
 
 interface Question {
@@ -84,7 +85,6 @@ const translations = {
     latestResult: "آخر نتيجة",
     totalExp: "إجمالي النقاط",
     insights: "تحليلات الأداء",
-    leaderboard: "لوحة الشرف",
     months: "أشهر التقييم",
     back: "عودة",
     next: "التالي",
@@ -122,7 +122,6 @@ const translations = {
     latestResult: "Latest Result",
     totalExp: "Total Points",
     insights: "Performance Insights",
-    leaderboard: "Leaderboard",
     months: "Assessment Months",
     back: "Back",
     next: "Next",
@@ -176,48 +175,38 @@ const MOCK_REGIONS = [
 
 // --- Mock Data ---
 const MOCK_MONTHS: ExamMonth[] = [
-  { id: '1', name: { ar: 'يناير 2025', en: 'January 2025' }, status: 'active', duration: 1200, questions: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10'], points: 100, type: 'monthly' },
-  { id: '2', name: { ar: 'فبراير 2025', en: 'February 2025' }, status: 'active', duration: 1200, questions: ['q11', 'q12', 'q13', 'q14', 'q15', 'q16', 'q17', 'q18', 'q19', 'q20'], points: 100, type: 'monthly' },
-  { id: '3', name: { ar: 'مارس 2025', en: 'March 2025' }, status: 'active', duration: 1200, questions: ['q21', 'q22', 'q23', 'q24', 'q25', 'q26', 'q27', 'q28', 'q29', 'q30'], points: 100, type: 'monthly' },
-  { id: 'T1', name: { ar: 'تدريب مكافحة العدوى', en: 'Infection Control Training' }, status: 'active', duration: 600, questions: ['q1', 'q3', 'q5', 'q7', 'q9'], points: 50, type: 'training', groupName: 'Quality' },
+  { id: '1', name: { ar: 'يناير', en: 'January' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'monthly' },
+  { id: '2', name: { ar: 'فبراير', en: 'February' }, status: 'active', duration: 300, questions: ['q1', 'q3'], points: 100, type: 'monthly' },
+  { id: '3', name: { ar: 'مارس', en: 'March' }, status: 'active', duration: 600, questions: ['q2', 'q3'], points: 100, type: 'monthly' },
+  { id: 'T1', name: { ar: 'تدريب المهارات الأساسية', en: 'Basic Skills Training' }, status: 'active', duration: 300, questions: ['q1', 'q2'], points: 100, type: 'training', groupName: 'Group A' },
 ];
 
 const MOCK_QUESTIONS: Question[] = [
-  // --- January Set (Infection Control & Safety) ---
-  { id: 'q1', text: { ar: 'هل يجب غسل اليدين قبل وبعد التعامل مع كل مريض؟', en: 'Should hands be washed before and after handling every patient?' }, type: 'tf', correctAnswer: 'True', category: { ar: 'مكافحة العدوى', en: 'Infection Control' }, points: 10 },
-  { id: 'q2', text: { ar: 'ما هو التركيز المناسب للكحول المستخدم لتطهير الجلد قبل سحب العينة؟', en: 'What is the appropriate alcohol concentration for skin disinfection before sampling?' }, type: 'mc', options: { ar: ['50%', '70%', '95%', '100%'], en: ['50%', '70%', '95%', '100%'] }, correctAnswer: '70%', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
-  { id: 'q3', text: { ar: 'يتم التخلص من الإبر المستخدمة في صندوق الأمان (Safety Box).', en: 'Used needles should be disposed of in a Safety Box.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
-  { id: 'q4', text: { ar: 'ما هو الإجراء الأول عند سكب عينة دم على الأرض؟', en: 'What is the first step when a blood sample spills on the floor?' }, type: 'mc', options: { ar: ['المسح بالماء فقط', 'تغطيتها بمناديل ووضع كلور مخفف 1:10', 'تركها لتجف', 'إبلاغ المدير فقط'], en: ['Mop with water', 'Cover with tissues and add 1:10 diluted bleach', 'Leave it to dry', 'Inform the manager only'] }, correctAnswer: 'تغطيتها بمناديل ووضع كلور مخفف 1:10', category: { ar: 'مكافحة العدوى', en: 'Infection Control' }, points: 10 },
-  { id: 'q5', text: { ar: 'يجب ارتداء القفازات أثناء سحب عينات الدم.', en: 'Gloves must be worn during blood collection.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
-  { id: 'q6', text: { ar: 'ما هو الوقت المسموح به لترك التورنيكيه (الرباط الضاغط) على ذراع المريض؟', en: 'How long can a tourniquet be left on a patient\'s arm?' }, type: 'mc', options: { ar: ['أقل من دقيقة', '5 دقائق', '10 دقائق', 'حتى اكتمال سحب العينة'], en: ['Less than 1 minute', '5 minutes', '10 minutes', 'Until collection is complete'] }, correctAnswer: 'أقل من دقيقة', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
-  { id: 'q7', text: { ar: 'يتم حفظ عينات البول العادية في درجة حرارة الغرفة لمدة 24 ساعة.', en: 'Normal urine samples are stored at room temperature for 24 hours.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'التخزين', en: 'Storage' }, points: 10 },
-  { id: 'q8', text: { ar: 'ما هو اللون القياسي لأنبوب عينة صورة الدم كاملة (CBC)؟', en: 'What is the standard tube color for a Complete Blood Count (CBC)?' }, type: 'mc', options: { ar: ['أحمر', 'أصفر', 'أرجواني (Lavender)', 'أزرق'], en: ['Red', 'Yellow', 'Lavender', 'Blue'] }, correctAnswer: 'أرجواني (Lavender)', category: { ar: 'أنابيب العينات', en: 'Sample Tubes' }, points: 10 },
-  { id: 'q9', text: { ar: 'يجب مطابقة اسم المريض مع الكود الموجود على الأنبوبة قبل السحب.', en: 'Patient name must be matched with the tube code before collection.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
-  { id: 'q10', text: { ar: 'ما هو الترتيب الصحيح لسحب الأنابيب (Order of Draw)؟', en: 'What is the correct Order of Draw?' }, type: 'mc', options: { ar: ['أحمر ثم أزرق', 'أزرق ثم أحمر ثم أرجواني', 'أرجواني ثم أزرق', 'أي ترتيب'], en: ['Red then Blue', 'Blue then Red then Lavender', 'Lavender then Blue', 'Any order'] }, correctAnswer: 'أزرق ثم أحمر ثم أرجواني', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
-
-  // --- February Set (Equipment & Analysis) ---
-  { id: 'q11', text: { ar: 'يجب تنظيف جهاز السنترفيوج بشكل دوري عند انسكاب أي عينة داخله.', en: 'The centrifuge must be cleaned periodically if any sample spills inside.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'الأجهزة', en: 'Equipment' }, points: 10 },
-  { id: 'q12', text: { ar: 'أين يتم تخزين الكيماويات القابلة للاشتعال؟', en: 'Where should flammable chemicals be stored?' }, type: 'mc', options: { ar: ['بجانب الحوض', 'في دواليب خشبية', 'في كبينة تخزين مضادة للحريق', 'تحت التكييف'], en: ['Beside the sink', 'In wooden cabinets', 'In a fire-rated storage cabinet', 'Under the AC'] }, correctAnswer: 'في كبينة تخزين مضادة للحريق', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
-  { id: 'q13', text: { ar: 'يعتبر الهيبارين مادة مانعة للتجلط تستخدم لسحب غازات الدم.', en: 'Heparin is an anticoagulant used for blood gases.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'أنابيب العينات', en: 'Sample Tubes' }, points: 10 },
-  { id: 'q14', text: { ar: 'أي أنبوب يستخدم لاختبارات سيولة الدم (PT/PTT)؟', en: 'Which tube is used for coagulation tests (PT/PTT)?' }, type: 'mc', options: { ar: ['سترات الصوديوم (أزرق)', 'EDTA (أرجواني)', 'أحمر', 'هيبارين (أخضر)'], en: ['Sodium Citrate (Blue)', 'EDTA (Lavender)', 'Red', 'Heparin (Green)'] }, correctAnswer: 'سترات الصوديوم (أزرق)', category: { ar: 'أنابيب العينات', en: 'Sample Tubes' }, points: 10 },
-  { id: 'q15', text: { ar: 'يمكن إعادة سحب عينة من ذراع به "كانولا" محاليل نشطة.', en: 'A sample can be collected from an arm with an active IV cannula.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
-  { id: 'q16', text: { ar: 'ما هو الإجراء المتبع عند استلام عينة متجلطة لصورة الدم؟', en: 'What is the procedure when receiving a clotted CBC sample?' }, type: 'mc', options: { ar: ['تحميلها على الجهاز', 'رفض العينة وطلب إعادة سحب', 'محاولة فك التجلط', 'كتابة النتيجة يدوياً'], en: ['Load it on the machine', 'Reject sample and request redraw', 'Try to break the clot', 'Write results manually'] }, correctAnswer: 'رفض العينة وطلب إعادة سحب', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
-  { id: 'q17', text: { ar: 'يجب فصل السيرم عن الخلايا في أسرع وقت ممكن (يفضل في خلال ساعتين).', en: 'Serum must be separated from cells as soon as possible (preferably within 2 hours).' }, type: 'tf', correctAnswer: 'True', category: { ar: 'تجهيز العينات', en: 'Processing' }, points: 10 },
-  { id: 'q18', text: { ar: 'ما هي درجة الحرارة المثالية لحفظ الثلاجة في المختبر؟', en: 'What is the ideal temperature for a lab refrigerator?' }, type: 'mc', options: { ar: ['-20 درجة', '0 درجة', '2-8 درجة مئوية', '25 درجة'], en: ['-20 degrees', '0 degrees', '2-8 degrees Celsius', '25 degrees'] }, correctAnswer: '2-8 درجة مئوية', category: { ar: 'الأجهزة', en: 'Equipment' }, points: 10 },
-  { id: 'q19', text: { ar: 'عينات السكر الصائم تتطلب صيام 4 ساعات فقط.', en: 'Fasting blood sugar samples require only 4 hours of fasting.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'أساسيات التحليل', en: 'Analysis Basics' }, points: 10 },
-  { id: 'q20', text: { ar: 'لماذا يتم تقليب أنابيب EDTA بلطف بعد السحب مباشرة؟', en: 'Why are EDTA tubes gently inverted immediately after collection?' }, type: 'mc', options: { ar: ['لتفتيت الخلايا', 'لمنع التجلط عن طريق خلط الدم بالمادة المانعة', 'لتسريع التجلط', 'للتبريد'], en: ['To break cells', 'To prevent clotting by mixing blood with anticoagulant', 'To speed up clotting', 'To cool'] }, correctAnswer: 'لمنع التجلط عن طريق خلط الدم بالمادة المانعة', category: { ar: 'سحب العينات', en: 'Phlebotomy' }, points: 10 },
-
-  // --- March Set (Customer Service & Ethics) ---
-  { id: 'q21', text: { ar: 'يجب الحفاظ على سرية بيانات المريض ونتائج تحاليله.', en: 'Patient data and results must remain confidential.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'الأخلاقيات', en: 'Ethics' }, points: 10 },
-  { id: 'q22', text: { ar: 'ما هو الرد المناسب إذا سألك المريض عن تشخيص حالته بناءً على العينة؟', en: 'What is the appropriate response if a patient asks for a diagnosis based on their sample?' }, type: 'mc', options: { ar: ['إعطاؤه تشخيصاً سريعاً', 'إبلاغه بأن الطبيب المعالج هو المختص بتفسير النتائج', 'تجاهل السؤال', 'إخباره بأسوأ الاحتمالات'], en: ['Give quick diagnosis', 'Tell them the treating physician is responsible for interpretation', 'Ignore the question', 'Tell them the worst-case scenario'] }, correctAnswer: 'إبلاغه بأن الطبيب المعالج هو المختص بتفسير النتائج', category: { ar: 'خدمة العملاء', en: 'Customer Service' }, points: 10 },
-  { id: 'q23', text: { ar: 'يمكن إعطاء نتائج التحاليل بالهاتف للأقارب دون التأكد من هويتهم.', en: 'Results can be given over the phone to relatives without verifying identity.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'الأخلاقيات', en: 'Ethics' }, points: 10 },
-  { id: 'q24', text: { ar: 'ماذا تفعل إذا لاحظت خطأ في بيانات المريض على السيستم؟', en: 'What do you do if you notice an error in patient data on the system?' }, type: 'mc', options: { ar: ['إصلاحه فوراً وإبلاغ المشرف', 'تركه كما هو', 'حذف البيانات', 'تصحيحه باليد على الورق فقط'], en: ['Fix immediately and inform supervisor', 'Leave as is', 'Delete data', 'Correct by hand on paper only'] }, correctAnswer: 'إصلاحه فوراً وإبلاغ المشرف', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
-  { id: 'q25', text: { ar: 'يعتبر التعامل بابتسامة وهدوء جزءاً أساسياً من جودة الخدمة.', en: 'Smiling and calm handling is a core part of service quality.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'خدمة العملاء', en: 'Customer Service' }, points: 10 },
-  { id: 'q26', text: { ar: 'أي من هذه السلوكيات غير احترافي في المختبر؟', en: 'Which of these behaviors is unprofessional in the lab?' }, type: 'mc', options: { ar: ['ارتداء البالطو', 'الأكل والشرب في منطقة العمل', 'غسل اليدين', 'استخدام الباركود'], en: ['Wearing lab coat', 'Eating/drinking in work area', 'Hand washing', 'Using barcodes'] }, correctAnswer: 'الأكل والشرب في منطقة العمل', category: { ar: 'الأخلاقيات', en: 'Ethics' }, points: 10 },
-  { id: 'q27', text: { ar: 'يجب شرح إجراءات السحب للمريض لتقليل توتره.', en: 'Sampling procedures should be explained to the patient to reduce anxiety.' }, type: 'tf', correctAnswer: 'True', category: { ar: 'خدمة العملاء', en: 'Customer Service' }, points: 10 },
-  { id: 'q28', text: { ar: 'ما هو التصرف الصحيح مع مريض يشعر بالإغماء أثناء السحب؟', en: 'What is the correct action for a patient feeling faint during sampling?' }, type: 'mc', options: { ar: ['الاستمرار في السحب', 'إيقاف السحب فوراً ومساعدة المريض على الاستلقاء', 'تركه يمشي', 'إعطاؤه ماء مثلج فوراً'], en: ['Continue collection', 'Stop immediately and help patient lie down', 'Let them walk', 'Give ice water immediately'] }, correctAnswer: 'إيقاف السحب فوراً ومساعدة المريض على الاستلقاء', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
-  { id: 'q29', text: { ar: 'يمكن للموظف ترك العينة المكسورة في مكانها حتى نهاية الوردية.', en: 'An employee can leave a broken sample in place until the end of the shift.' }, type: 'tf', correctAnswer: 'False', category: { ar: 'السلامة', en: 'Safety' }, points: 10 },
-  { id: 'q30', text: { ar: 'ما هو دور الموظف في تحقيق رؤية مختبرات ألفا؟', en: 'What is the employee\'s role in achieving Alfa Labs\' vision?' }, type: 'mc', options: { ar: ['الالتزام بمعايير الجودة والسرعة', 'العمل فقط وقت الحاجة', 'توفير التكاليف على حساب الجودة', 'تجاهل الشكاوى'], en: ['Commitment to quality and speed standards', 'Work only when needed', 'Reduce costs at quality\'s expense', 'Ignore complaints'] }, correctAnswer: 'الالتزام بمعايير الجودة والسرعة', category: { ar: 'الجودة', en: 'Quality' }, points: 10 },
+  { 
+    id: 'q1', 
+    text: { ar: 'هل يجب تعقيم الأدوات بعد كل عينة؟', en: 'Should tools be sterilized after every sample?' }, 
+    type: 'tf', 
+    correctAnswer: 'True',
+    category: { ar: 'إجراءات المختبر', en: 'Lab Procedures' },
+    points: 50
+  },
+  { 
+    id: 'q2', 
+    text: { ar: 'ما هو اللون القياسي لعينات الدم الوريدي؟', en: 'What is the standard color for venous blood samples?' }, 
+    type: 'mc', 
+    options: { ar: ['أحمر', 'أزرق', 'أخضر', 'أسود'], en: ['Red', 'Blue', 'Green', 'Black'] }, 
+    correctAnswer: 'Red',
+    category: { ar: 'أساسيات التحليل', en: 'Analysis Basics' },
+    points: 50
+  },
+  { 
+    id: 'q3', 
+    text: { ar: 'يتم حفظ العينات في درجة حرارة الغرفة لمجمعات الأنسجة.', en: 'Samples are stored at room temperature for tissue clusters.' }, 
+    type: 'tf', 
+    correctAnswer: 'False',
+    category: { ar: 'التخزين', en: 'Storage' },
+    points: 50
+  },
 ];
 
 const MOCK_PROGRESS = [
@@ -292,9 +281,10 @@ const ExamScreen = ({
   isRtl, 
   text, 
   getExamQuestions,
-  setScreen
+  setScreen,
+  timer,
+  setTimer
 }: any) => {
-    const [timer, setTimer] = React.useState(activeExam?.duration || 300);
     const [isTimeUp, setIsTimeUp] = React.useState(false);
 
     React.useEffect(() => {
@@ -305,7 +295,7 @@ const ExamScreen = ({
             setIsTimeUp(true);
         }
         return () => clearInterval(interval);
-    }, [timer, isTimeUp]);
+    }, [timer, isTimeUp, setTimer]);
 
     if (!activeExam) return null;
     const examQs = getExamQuestions(activeExam);
@@ -419,9 +409,9 @@ export default function App() {
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
   const [user, setUser] = useState<UserData | null>(null);
   const [users, setUsers] = useState<UserData[]>([]);
-  const [questions, setQuestions] = useState<Question[]>(MOCK_QUESTIONS);
-  const [exams, setExams] = useState<ExamMonth[]>(MOCK_MONTHS);
-  const [globalCounts, setGlobalCounts] = useState({ exams: MOCK_MONTHS.length, questions: MOCK_QUESTIONS.length });
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [exams, setExams] = useState<ExamMonth[]>([]);
+  const [globalCounts, setGlobalCounts] = useState({ exams: 0, questions: 0 });
   const [syncStatus, setSyncStatus] = useState<'synced' | 'pending' | 'error'>('synced');
   const [dbStatus, setDbStatus] = useState<{status: 'idle'|'syncing'|'connected'|'error'|'empty', details?: string}>({ status: 'idle' });
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -554,7 +544,8 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
             questions: e.questions, // jsonb support
             points: e.points,
             type: e.type,
-            group_name: e.groupName || ''
+            group_name: e.groupName || '',
+            allowed_regions: e.allowedRegions || []
         }));
 
         addLog("Upserting Questions...");
@@ -606,6 +597,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
   // Exam State
   const [activeExam, setActiveExam] = useState<ExamMonth | null>(null);
   const [examStep, setExamStep] = useState(0);
+  const [examTimer, setExamTimer] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [categoryTab, setCategoryTab] = useState<'monthly' | 'training'>('monthly');
   
@@ -614,111 +606,11 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
   const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
   
   // Fetch Data from Supabase
-  const fetchInitialData = async () => {
-    addLog("Starting initial data sync...");
-    setDbStatus({ status: 'syncing' });
-    
-    // Load local cache as backup
-    try {
-      const backupQs = localStorage.getItem('alfa_questions_backup');
-      const backupExams = localStorage.getItem('alfa_exams_backup');
-      if (backupQs && backupQs !== 'undefined') setQuestions(JSON.parse(backupQs));
-      if (backupExams && backupExams !== 'undefined') setExams(JSON.parse(backupExams));
-    } catch (e) {
-      console.warn("Failed to load local backup:", e);
-    }
-
-    try {
-      // Core Fetch logic
-      addLog("Attempting to reach Global Server...");
-      const { data: globalExams, error: eErr } = await supabase.from('exams').select('*');
-      const { data: globalQs, error: qErr } = await supabase.from('questions').select('*');
-
-      if (eErr || qErr) throw new Error(eErr?.message || qErr?.message);
-
-      if (globalExams && globalExams.length > 0) {
-          addLog(`Found ${globalExams.length} exams on server.`);
-          const processedExams = globalExams.map(e => ({
-              ...e,
-              id: String(e.id),
-              name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.id, en: e.name_en || e.id },
-              status: e.status || 'active',
-              questions: Array.isArray(e.questions) ? e.questions : [],
-              points: Number(e.points || 100)
-          }));
-          setExams(processedExams);
-          localStorage.setItem('alfa_exams_backup', JSON.stringify(processedExams));
-          setGlobalCounts(prev => ({ ...prev, exams: globalExams.length }));
-      }
-
-      if (globalQs && globalQs.length > 0) {
-          addLog(`Found ${globalQs.length} questions on server.`);
-          const processedQs = globalQs.map(q => ({
-              ...q,
-              id: String(q.id),
-              text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.id, en: q.text_en || q.id },
-              correctAnswer: String(q.correct_answer || q.correctAnswer || ''),
-              options: typeof q.options === 'object' ? q.options : { ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), en: [] },
-              points: Number(q.points || 10)
-          }));
-          setQuestions(processedQs);
-          localStorage.setItem('alfa_questions_backup', JSON.stringify(processedQs));
-          setGlobalCounts(prev => ({ ...prev, questions: globalQs.length }));
-      }
-      
-      setDbStatus({ status: 'connected' });
-      addLog("Global Sync Completed Successfully.");
-
-      const { data: usersData } = await supabase.from('users').select('*');
-      const { data: resultsData } = await supabase.from('results').select('*');
-      
-      if (usersData) {
-        const mappedUsers = usersData.map(u => {
-          const userResults = (resultsData || [])
-            .filter(r => r.user_id === u.id)
-            .map(r => ({
-              examId: String(r.exam_id),
-              score: Number(r.score),
-              rawScore: Number(r.raw_score),
-              maxScore: Number(r.max_score),
-              date: r.created_at || r.date,
-              answers: r.answers
-            }));
-          
-          // Calculate total score from raw points for better accuracy
-          const calculatedTotalRaw = userResults.reduce((acc, res) => acc + (res.rawScore || 0), 0);
-
-          return {
-            ...u,
-            employeeId: u.employee_id || u.employeeId,
-            totalScore: calculatedTotalRaw,
-            lastScore: Number(u.last_score || u.lastScore || 0),
-            examResults: userResults,
-            allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
-          };
-        });
-        setUsers(mappedUsers as UserData[]);
-        
-        // Refresh logged in user data if exists
-        const currentUserId = user?.id; // Use ref-like access if needed, but here simple state check
-        if (currentUserId && currentUserId !== 'admin') {
-          setUser(prev => {
-              if (!prev || prev.id === 'admin') return prev;
-              const updated = mappedUsers.find(curr => curr.id === prev.id);
-              return updated ? (updated as UserData) : prev;
-          });
-        }
-      }
-    } catch (err: any) {
-      addLog("GLOBAL FETCH FAILED: " + err.message);
-      setDbStatus({ status: 'error', details: err.message });
-    }
-  };
-
   useEffect(() => {
     const handleGlobalError = (event: PromiseRejectionEvent | ErrorEvent) => {
         const error = (event as any).reason || (event as any).message || 'Unknown Error';
         console.error("Global Error Caught:", error);
+        // Only alert for major issues
         if (String(error).includes('Supabase') || String(error).includes('API')) {
             alert("⚠️ Connection Error: " + String(error));
         }
@@ -726,28 +618,144 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     window.addEventListener('unhandledrejection', handleGlobalError as any);
     window.addEventListener('error', handleGlobalError as any);
     
-    fetchInitialData();
+    async function fetchData() {
+      addLog("Starting initial data sync...");
+      setDbStatus({ status: 'syncing' });
+      
+      // Load local cache as backup
+      try {
+        const backupQs = localStorage.getItem('alfa_questions_backup');
+        const backupExams = localStorage.getItem('alfa_exams_backup');
+        if (backupQs && backupQs !== 'undefined') setQuestions(JSON.parse(backupQs));
+        if (backupExams && backupExams !== 'undefined') setExams(JSON.parse(backupExams));
+      } catch (e) {
+        console.warn("Failed to load local backup:", e);
+      }
 
-    // Setup Real-time subscriptions
+      try {
+        // Core Fetch logic
+        addLog("Attempting to reach Global Server...");
+        const { data: globalExams, error: eErr } = await supabase.from('exams').select('*');
+        const { data: globalQs, error: qErr } = await supabase.from('questions').select('*');
+
+        if (eErr || qErr) throw new Error(eErr?.message || qErr?.message);
+
+        if (globalExams && globalExams.length > 0) {
+            addLog(`Found ${globalExams.length} exams on server.`);
+            const processedExams = globalExams.map(e => ({
+                ...e,
+                id: String(e.id),
+                name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.id, en: e.name_en || e.id },
+                status: e.status || 'active',
+                questions: Array.isArray(e.questions) ? e.questions : [],
+                points: Number(e.points || 100),
+                allowedRegions: Array.isArray(e.allowed_regions) ? e.allowed_regions : []
+            }));
+            setExams(processedExams);
+            localStorage.setItem('alfa_exams_backup', JSON.stringify(processedExams));
+            setGlobalCounts(prev => ({ ...prev, exams: globalExams.length }));
+        }
+
+        if (globalQs && globalQs.length > 0) {
+            addLog(`Found ${globalQs.length} questions on server.`);
+            const processedQs = globalQs.map(q => ({
+                ...q,
+                id: String(q.id),
+                text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.id, en: q.text_en || q.id },
+                correctAnswer: String(q.correct_answer || q.correctAnswer || ''),
+                options: typeof q.options === 'object' ? q.options : { ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), en: [] },
+                points: Number(q.points || 10)
+            }));
+            setQuestions(processedQs);
+            localStorage.setItem('alfa_questions_backup', JSON.stringify(processedQs));
+            setGlobalCounts(prev => ({ ...prev, questions: globalQs.length }));
+        }
+        
+        setDbStatus({ status: 'connected' });
+        addLog("Global Sync Completed Successfully.");
+
+        const { data: usersData } = await supabase.from('users').select('*');
+        const { data: resultsData } = await supabase.from('results').select('*');
+        
+        if (usersData) {
+          const mappedUsers = usersData.map(u => {
+            const userResults = (resultsData || [])
+              .filter(r => r.user_id === u.id)
+              .map(r => ({
+                examId: String(r.exam_id),
+                score: Number(r.score),
+                rawScore: Number(r.raw_score),
+                maxScore: Number(r.max_score),
+                date: r.created_at || r.date
+              }));
+            
+            // Calculate total score from results if DB total_score is 0 for robustness
+            const dbScore = Number(u.total_score || u.totalScore || 0);
+            const calculatedTotal = userResults.reduce((acc, res) => acc + res.score, 0);
+            const currentTotalScore = dbScore > 0 ? dbScore : calculatedTotal;
+
+            return {
+              ...u,
+              employeeId: u.employee_id || u.employeeId,
+              totalScore: currentTotalScore,
+              lastScore: Number(u.last_score || u.lastScore || 0),
+              examResults: userResults,
+              allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
+            };
+          });
+          setUsers(mappedUsers as UserData[]);
+          
+          // Refresh logged in user data if exists
+          if (user && user.id !== 'admin') {
+            const updatedUser = mappedUsers.find(curr => curr.id === user.id);
+            if (updatedUser) setUser(updatedUser as UserData);
+          }
+        }
+      } catch (err: any) {
+        addLog("GLOBAL FETCH FAILED: " + err.message);
+        setDbStatus({ status: 'error', details: err.message });
+      }
+    }
+
+    fetchData();
+
+    // Setup Real-time subscriptions with incremental updates
     const usersChannel = supabase.channel('users_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
           if (payload.eventType === 'INSERT') {
-              fetchInitialData();
+              const newUser = payload.new as UserData;
+              setUsers(prev => prev.some(u => u.id === newUser.id) ? prev : [...prev, newUser]);
           } else if (payload.eventType === 'UPDATE') {
-              fetchInitialData();
+              setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
           } else if (payload.eventType === 'DELETE') {
-              setUsers(prev => prev.filter(u => u.id !== payload.old.id));
+              setUsers(prev => prev.filter(u => u.id === payload.old.id));
           }
       }).subscribe();
 
     const examsChannel = supabase.channel('exams_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchInitialData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+              const e = payload.new;
+              setExams(prev => prev.some(item => item.id === e.id) ? prev : [...prev, { ...e, groupName: e.group_name } as ExamMonth]);
+          } else if (payload.eventType === 'UPDATE') {
+              const e = payload.new;
+              setExams(prev => prev.map(item => item.id === e.id ? { ...item, ...e, groupName: e.group_name } : item));
+          } else if (payload.eventType === 'DELETE') {
+              setExams(prev => prev.filter(item => item.id === payload.old.id));
+          }
+      }).subscribe();
 
     const questionsChannel = supabase.channel('questions_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchInitialData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              fetchData(); // Questions have complex mapping, easier to re-fetch
+          } else if (payload.eventType === 'DELETE') {
+              setQuestions(prev => prev.filter(q => q.id !== String(payload.old.id)));
+          }
+      }).subscribe();
 
     const resultsChannel = supabase.channel('results_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => fetchInitialData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => fetchData()).subscribe();
 
     return () => {
       supabase.removeChannel(usersChannel);
@@ -788,76 +796,34 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
       });
       
       if (!foundUser) {
-        // Search in Supabase first before creating a new one to prevent duplicates
-        addLog("User not in local state, searching Supabase...");
-        const { data: dbUser, error: searchErr } = await supabase.from('users').select('*').eq('employee_id', employeeIdCode).single();
-        
-        if (dbUser) {
-            addLog("Found user in Supabase.");
-            // Refresh results for this specific user
-            const { data: dbResults } = await supabase.from('results').select('*').eq('user_id', dbUser.id);
-            const userResults = (dbResults || []).map(r => ({
-                examId: String(r.exam_id),
-                score: Number(r.score),
-                rawScore: Number(r.raw_score),
-                maxScore: Number(r.max_score),
-                date: r.created_at || r.date,
-                answers: r.answers
-            }));
+        // Create a new user dynamically
+        const newUser: UserData = {
+          id: 'u' + Date.now(),
+          name: name,
+          employeeId: employeeIdCode,
+          region: regionId,
+          totalScore: 0,
+          lastScore: 0,
+          badges: [],
+          role: 'user',
+          examResults: []
+        };
 
-            const fullUser: UserData = {
-                ...dbUser,
-                employeeId: dbUser.employee_id || dbUser.employeeId,
-                totalScore: Number(dbUser.total_score || 0),
-                lastScore: Number(dbUser.last_score || 0),
-                examResults: userResults,
-                allowedRetakes: Array.isArray(dbUser.allowed_retakes) ? dbUser.allowed_retakes : []
-            };
-            setUser(fullUser);
-            setUsers(prev => [...prev.filter(u => u.id !== fullUser.id), fullUser]);
-        } else {
-            // Create a new user dynamically if really doesn't exist
-            const newUser: UserData = {
-              id: 'u' + Date.now(),
-              name: name,
-              employeeId: employeeIdCode,
-              region: regionId,
-              totalScore: 0,
-              lastScore: 0,
-              badges: [],
-              role: 'user',
-              examResults: []
-            };
+        const { error } = await supabase.from('users').insert([{
+            id: newUser.id,
+            name: newUser.name,
+            employee_id: newUser.employeeId,
+            region: newUser.region,
+            role: 'user'
+        }]);
 
-            const { error } = await supabase.from('users').insert([{
-                id: newUser.id,
-                name: newUser.name,
-                employee_id: newUser.employeeId,
-                region: newUser.region,
-                role: 'user'
-            }]);
+        if (error) console.error("Create User Error:", error);
 
-            if (error) console.error("Create User Error:", error);
-
-            setUsers(prev => [...prev, newUser]);
-            setUser(newUser);
-        }
+        setUsers(prev => [...prev, newUser]);
+        setUser(newUser);
       } else {
-        // User exists in state - but let's refresh their results JUST to be sure
-        addLog("Refreshing existing user results...");
-        const { data: dbResults } = await supabase.from('results').select('*').eq('user_id', foundUser.id);
-        const userResults = (dbResults || []).map(r => ({
-            examId: String(r.exam_id),
-            score: Number(r.score),
-            rawScore: Number(r.raw_score),
-            maxScore: Number(r.max_score),
-            date: r.created_at || r.date,
-            answers: r.answers
-        }));
-
-        const updatedFoundUser = { ...foundUser, examResults: userResults };
-        setUser(updatedFoundUser);
-        setUsers(prev => prev.map(u => u.id === foundUser.id ? updatedFoundUser : u));
+        // Logged in with existing user - results are already in state from fetchData
+        setUser(foundUser);
       }
       
       setScreen('dashboard');
@@ -874,7 +840,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     );
   };
 
-  const handleStartExam = (exam: ExamMonth) => {
+  const handleStartExam = async (exam: ExamMonth) => {
     // Check if user already finished this exam
     const hasFinished = (user?.examResults || []).some(r => r.examId === exam.id);
     const isAllowedRetake = (user?.allowedRetakes || []).includes(exam.id);
@@ -884,9 +850,21 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         return;
     }
 
-    // New: If it was a retake, consume the permission immediately upon starting
+    // consume retake permission immediately
     if (isAllowedRetake && user) {
-        consumeRetake(user.id, exam.id);
+      const newRetakes = (user.allowedRetakes || []).filter(id => id !== exam.id);
+      const updatedUser = { ...user, allowedRetakes: newRetakes };
+      setUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+      
+      try {
+        await supabase
+          .from('users')
+          .update({ allowed_retakes: newRetakes })
+          .eq('id', user.id);
+      } catch (err) {
+        console.error("Error consuming retake:", err);
+      }
     }
 
     const examQs = getExamQuestions(exam);
@@ -897,33 +875,13 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     }
 
     setActiveExam(exam);
+    setExamTimer(exam.duration || 300);
     setExamStep(0);
     setAnswers({});
     setScreen('exam');
   };
 
-    // Consume retake permission once used
-    const consumeRetake = async (userId: string, examId: string) => {
-        setUsers(prev => prev.map(u => {
-            if (u.id === userId) {
-                const updatedRetakes = (u.allowedRetakes || []).filter(id => id !== examId);
-                return { ...u, allowedRetakes: updatedRetakes };
-            }
-            return u;
-        }));
-        
-        if (isSupabaseConfigured) {
-            try {
-                const currentUser = users.find(u => u.id === userId);
-                const updatedRetakes = (currentUser?.allowedRetakes || []).filter(id => id !== examId);
-                await supabase.from('users').update({ allowed_retakes: updatedRetakes }).eq('id', userId);
-            } catch (err) {
-                console.error("Error consuming retake:", err);
-            }
-        }
-    };
-
-    const toggleRetake = async (userId: string, examId: string) => {
+  const toggleRetake = async (userId: string, examId: string) => {
     // 1. Update Locally
     let finalRetakes: string[] = [];
     setUsers(users.map(u => {
@@ -948,66 +906,6 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         if (error) console.error("Error updating allowed retakes:", error);
     } catch (err) {
         console.error("Supabase Error toggleRetake:", err);
-    }
-  };
-
-  const deleteUser = async (id: string) => {
-    if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا المستخدم وجميع نتائجه؟' : 'Are you sure you want to delete this user and all their results?')) return;
-    
-    // Remove locally
-    setUsers(prev => prev.filter(u => u.id !== id));
-    
-    if (isSupabaseConfigured) {
-        try {
-            await supabase.from('results').delete().eq('user_id', id);
-            await supabase.from('users').delete().eq('id', id);
-            addLog("User deleted successfully.");
-        } catch (err) {
-            console.error("Error deleting user:", err);
-            addLog("Error deleting user.");
-        }
-    }
-  };
-
-  const resetAllScores = async () => {
-    if (!confirm(lang === 'ar' ? '⚠️ تحذير: هل أنت متأكد من مسح جميع نتائج الموظفين وتصفير النقاط نهائياً؟' : '⚠️ Warning: Are you sure you want to permanently clear all employee results and reset points to zero?')) return;
-    
-    setUsers(prev => prev.map(u => u.role === 'admin' ? u : ({
-        ...u,
-        totalScore: 0,
-        lastScore: 0,
-        examResults: [],
-        allowedRetakes: []
-    })));
-    
-    if (isSupabaseConfigured) {
-        try {
-            // Delete all records from results table
-            const { error: delErr } = await supabase.from('results').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-            if (delErr) console.error("Results reset error:", delErr);
-            
-            // Reset users table
-            const { error: userErr } = await supabase.from('users').update({
-                total_score: 0,
-                last_score: 0,
-                totalScore: 0,
-                lastScore: 0,
-                exam_results: [],
-                examResults: [],
-                allowed_retakes: [],
-                allowedRetakes: []
-            }).eq('role', 'user');
-            
-            if (userErr) throw userErr;
-            
-            addLog("System Reset: All scores cleared.");
-            alert(lang === 'ar' ? "تم تصفير جميع البيانات بنجاح" : "All scores reset successfully");
-        } catch (err: any) {
-            console.error("Reset Failure:", err);
-            alert("Reset Error: " + err.message);
-        }
-    } else {
-        alert("Not connected to Supabase.");
     }
   };
 
@@ -1036,25 +934,22 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         score: score,
         rawScore: earned,
         maxScore: total,
-        date: new Date().toISOString(),
-        answers: { ...answers }
+        date: new Date().toISOString()
     };
     
     const existingResults = user.examResults || [];
-    // Recalculate total score from all results for better accuracy
-    // Fix: Only take the LATEST score for each unique exam to prevent doubling if review screen triggers something
-    const resultsMap = new Map();
-    [...existingResults, newResult].forEach(res => {
-        resultsMap.set(res.examId, res);
-    });
-    const finalUniqueResults = Array.from(resultsMap.values());
-    const newTotalScore = finalUniqueResults.reduce((acc, res) => acc + (res.rawScore || 0), 0);
+    // Only keep the most recent result for each examId to prevent score doubling
+    const filteredResults = existingResults.filter(r => r.examId !== activeExam.id);
+    const updatedResults = [...filteredResults, newResult];
+    
+    // Recalculate total score from unique exams
+    const newTotalScore = updatedResults.reduce((acc, res) => acc + (res.score || 0), 0);
 
     const updatedUser: UserData = {
         ...user,
         totalScore: newTotalScore,
         lastScore: score,
-        examResults: finalUniqueResults
+        examResults: updatedResults
     };
     
     // Instant UI feedback
@@ -1073,8 +968,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 exam_id: activeExam.id,
                 score: score,
                 raw_score: earned,
-                max_score: total,
-                answers: answers
+                max_score: total
             }]);
 
             if (resErr) {
@@ -1084,22 +978,16 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 }
             }
 
-            // Update User profile
-            const { error: userUpdErr } = await supabase.from('users').update({ 
+            // Update User profile (updating both snake_case and camelCase for table compatibility)
+            await supabase.from('users').update({ 
                 total_score: newTotalScore, 
                 last_score: score,
                 totalScore: newTotalScore,
                 lastScore: score,
-                exam_results: finalUniqueResults
+                exam_results: updatedResults
             }).eq('id', user.id);
-
-            if (userUpdErr) {
-                addLog("User Update Error: " + userUpdErr.message);
-            }
             
             addLog("Global Sync: Progress Saved.");
-            // Force a quick global data refresh to sync Admin view
-            fetchInitialData();
         } catch (err: any) {
             console.error("Database Sync Error:", err);
             addLog("Sync Error: " + err.message);
@@ -1238,30 +1126,26 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
             </div>
         </header>
 
-        <div className="grid grid-cols-2 gap-2 sm:gap-4 shrink-0">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 shrink-0">
             <AlfaCard title={`📈 ${user?.lastScore}%`} subtitle={text.latestResult} className="border-l-4 border-l-alfa-neon-blue !p-4 sm:!p-6" />
             <AlfaCard title={`⭐ ${user?.totalScore?.toLocaleString() ?? '0'}`} subtitle={text.totalExp} className="border-l-4 border-l-emerald-500 !p-4 sm:!p-6" />
+            <AlfaCard title="🎖️ Elite" subtitle="RANK" className="hidden lg:block border-l-4 border-l-amber-500 !p-4 sm:!p-6" />
+            <AlfaCard title="💎 7" subtitle="BADGES" className="hidden lg:block border-l-4 border-l-purple-500 !p-4 sm:!p-6" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-6 flex-1 min-h-0">
-            <AlfaCard title={text.insights} className="lg:col-span-3 flex flex-col h-full bg-alfa-blue/[0.02]">
-                <div className="flex-1 w-full min-h-[150px] sm:min-h-[250px]">
+        <div className="grid grid-cols-1 gap-2 sm:gap-6 flex-1 min-h-0">
+            <AlfaCard title={text.insights} className="flex flex-col h-full bg-alfa-blue/[0.02]">
+                <div className="flex-1 w-full min-h-[80px] sm:min-h-0">
                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={user?.examResults?.map(r => {
-                          const ex = exams.find(e => e.id === r.examId);
-                          return {
-                              name: lang === 'ar' ? (ex?.name.ar || r.examId) : (ex?.name.en || r.examId),
-                              score: r.score
-                          };
-                      }) || MOCK_PROGRESS}>
+                      <AreaChart data={MOCK_PROGRESS}>
                         <defs>
                           <linearGradient id="colorAlfa" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#0070f3" stopOpacity={0.2}/>
                             <stop offset="95%" stopColor="#0070f3" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
-                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#002855' }} />
-                        <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#002855' }} />
+                        <XAxis dataKey="name" hide />
+                        <YAxis hide />
                         <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
                         <Area type="monotone" dataKey="score" stroke="#0070f3" strokeWidth={4} fill="url(#colorAlfa)" animationDuration={2000} />
                       </AreaChart>
@@ -1269,7 +1153,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 </div>
                 <div className="mt-2 p-2 sm:p-4 bg-alfa-neon-blue/5 rounded-xl border border-alfa-neon-blue/10 backdrop-blur-sm">
                     <p className="text-[9px] sm:text-sm italic font-black text-alfa-blue opacity-70 leading-relaxed font-logo">
-                        {lang === 'ar' ? "أداءك التراكمي في جميع الاختبارات المكتملة." : "Your cumulative performance across all completed exams."}
+                        {lang === 'ar' ? "أداءك في تحاليل المختبر تطور بشكل ملحوظ. استمر في التميز." : "Lab analytics performance is peaking. Maintain excellence."}
                     </p>
                 </div>
             </AlfaCard>
@@ -1286,19 +1170,18 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
   );
 
   const MonthsScreen = () => {
-    // تصفية الامتحانات بناءً على النوع والمنطقة المسموح بها
+    // تصفية الامتحانات بناءً على النوع والمنطقة
     const monthlyExams = exams.filter(e => {
-        const isTypeMatch = (e.type || 'monthly') === 'monthly';
-        const isRegionMatch = !e.allowedRegions || e.allowedRegions.length === 0 || e.allowedRegions.includes(user?.region || '');
-        return isTypeMatch && isRegionMatch;
+      const typeMatch = (e.type || 'monthly') === 'monthly';
+      const regionMatch = !e.allowedRegions || e.allowedRegions.length === 0 || (user && e.allowedRegions.includes(user.region)) || user?.role === 'admin';
+      return typeMatch && regionMatch;
     });
     
     const trainingExams = exams.filter(e => {
-        const isTypeMatch = e.type === 'training';
-        const isRegionMatch = !e.allowedRegions || e.allowedRegions.length === 0 || e.allowedRegions.includes(user?.region || '');
-        return isTypeMatch && isRegionMatch;
+      const typeMatch = e.type === 'training';
+      const regionMatch = !e.allowedRegions || e.allowedRegions.length === 0 || (user && e.allowedRegions.includes(user.region)) || user?.role === 'admin';
+      return typeMatch && regionMatch;
     });
-    
     const currentList = categoryTab === 'monthly' ? monthlyExams : trainingExams;
 
     return (
@@ -1517,172 +1400,117 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
 
 const AdminResults = () => {
     const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
 
     const exportToCSV = (examId?: string) => {
         const BOM = "\uFEFF";
         let headers = "";
-        let rows = [];
-
+        let rows = "";
+        
         if (examId) {
-            // Detailed Exam Report
-            const exam = exams.find(e => e.id === examId);
-            const examQs = getExamQuestions(exam!);
-            
-            // Generate dynamic headers for questions
-            const questionHeaders = examQs.map((q, idx) => `Q${idx+1}: ${q.text[lang as 'ar'|'en'].replace(/,/g, ' ')}`).join(',');
+            const ex = exams.find(e => e.id === examId);
+            const exName = ex?.name[lang] || 'Exam';
             headers = lang === 'ar' 
-                ? `اسم الموظف,الكود,المنطقة,النقاط,النسبة المئوية,اسم الاختبار,${questionHeaders}\n` 
-                : `Employee Name,Employee ID,Region,Score Points,Percentage,Exam Name,${questionHeaders}\n`;
+                ? "اسم الموظف,الكود,المنطقة,الدرجة,النسبة,اسم الاختبار\n"
+                : "Employee Name,Code,Region,Points,Percentage,Test Name\n";
             
-            const examResults = users.filter(u => u.role === 'user').flatMap(u => {
-                const res = (u.examResults || []).find(r => r.examId === examId);
-                if (!res) return [];
-                const regionName = MOCK_REGIONS.find(r => r.id === u.region)?.name[lang as 'ar'|'en'] || u.region;
+            rows = users.filter(u => u.role === 'user').flatMap(u => {
+                const result = (u.examResults || []).find(r => r.examId === examId);
+                if (!result) return [];
                 
-                // Detailed question answers
-                const userAnswers = examQs.map(q => {
-                    const ans = res.answers?.[q.id];
-                    if (!ans) return '---';
-                    return ans === q.correctAnswer ? '✅' : '❌';
-                });
-
-                return [[
-                    `"${u.name}"`,
-                    `"${u.employeeId}"`,
-                    `"${regionName}"`,
-                    res.rawScore || 0,
-                    `"${res.score}%"`,
-                    `"${exam?.name[lang as 'ar'|'en'] || 'Exam'}"`,
-                    ...userAnswers.map(a => `"${a}"`)
-                ]];
-            });
-
-            rows = examResults.map(r => r.join(',') + '\n');
+                const region = MOCK_REGIONS.find(r => r.id === u.region);
+                const regionName = region ? (lang === 'ar' ? region.name.ar : region.name.en) : u.region;
+                
+                return `"${u.name}","${u.employeeId}","${regionName}",${result.rawScore || 0},${result.score}%,${exName}\n`;
+            }).join('');
         } else {
-            // General Regional Report
-            headers = lang === 'ar' ? "الاسم,الكود,المنطقة,الدرجة التراكمية,عدد الاختبارات\n" : "Name,Code,Region,Total Score,Exams Taken\n";
-            rows = [...MOCK_REGIONS].flatMap(region => {
-                const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
-                return regionUsers.map(u => {
-                    const regionName = lang === 'ar' ? region.name.ar : region.name.en;
-                    return `"${u.name}","${u.employeeId}",${regionName},${u.totalScore},${(u.examResults || []).length}\n`;
-                });
-            });
+            headers = lang === 'ar' 
+                ? "اسم الموظف,الكود,المنطقة,الدرجة التراكمية,عدد الاختبارات\n" 
+                : "Employee Name,Code,Region,Total Score,Exams Taken\n";
+            
+            rows = users.filter(u => u.role === 'user').map(u => {
+                const region = MOCK_REGIONS.find(r => r.id === u.region);
+                const regionName = region ? (lang === 'ar' ? region.name.ar : region.name.en) : u.region;
+                return `"${u.name}","${u.employeeId}","${regionName}",${u.totalScore},${(u.examResults || []).length}\n`;
+            }).join('');
         }
         
-        const blob = new Blob([BOM, headers, ...rows], { type: 'text/csv;charset=utf-8' });
+        const blob = new Blob([BOM, headers, rows], { type: 'text/csv;charset=utf-8' });
+        const fileName = examId ? `Exam_${examId}_Report.csv` : `Alfa_Global_Results.csv`;
+        
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.setAttribute('hidden', '');
         a.setAttribute('href', url);
-        a.setAttribute('download', `Alfa_Report_${examId || 'Regional'}_${new Date().toLocaleDateString()}.csv`);
+        a.setAttribute('download', fileName);
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
     };
 
-    if (selectedExamId) {
-        const exam = exams.find(e => e.id === selectedExamId);
-        const examUsers = users.filter(u => u.role === 'user').filter(u => (u.examResults || []).some(r => r.examId === selectedExamId));
-
+    const renderExamStats = (exam: ExamMonth) => {
+        const takers = users.filter(u => u.role === 'user' && (u.examResults || []).some(r => r.examId === exam.id));
+        
         return (
-            <div className="min-h-screen p-4 sm:p-12 max-w-6xl mx-auto flex flex-col gap-8 pb-32" dir={isRtl ? 'rtl' : 'ltr'}>
-                <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-alfa-blue p-6 rounded-[2.5rem] relative overflow-hidden border border-white/20">
-                    <div className="flex items-center gap-4 relative z-10">
-                        <button onClick={() => setSelectedExamId(null)} className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center text-white"><ArrowLeft className={isRtl ? 'rotate-180' : ''} /></button>
+            <div key={exam.id} className="space-y-4">
+                <div className="flex justify-between items-end px-2">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-alfa-blue rounded-2xl shadow-lg border border-alfa-neon-blue/40">
+                             <ClipboardList className="w-6 h-6 text-alfa-neon-blue" />
+                        </div>
                         <div>
-                            <h1 className="text-2xl font-black text-white">{lang === 'ar' ? exam?.name.ar : exam?.name.en}</h1>
-                            <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">{examUsers.length} Submissions</p>
+                            <h2 className="text-xl font-black text-alfa-blue">{lang === 'ar' ? exam.name.ar : exam.name.en}</h2>
+                            <p className="text-[9px] font-black text-alfa-blue/40 uppercase tracking-[0.2em]">{takers.length} Employees Completed</p>
                         </div>
                     </div>
-                    <div className="flex gap-2 relative z-10">
-                        <AlfaButton onClick={() => exportToCSV(selectedExamId)} variant="outline" className="h-14 px-8 bg-white/10 text-white"><FileSpreadsheet className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'تصدير إكسيل' : 'Export Excel'}</AlfaButton>
-                    </div>
-                </header>
-
-                <div className="mb-6 relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-alfa-blue/20" />
-                    <input 
-                        type="text" 
-                        placeholder={lang === 'ar' ? 'ابحث عن موظف بالاسم أو الكود...' : 'Search by name or employee ID...'}
-                        className="w-full h-16 pl-12 pr-6 rounded-[1.5rem] bg-white border border-black/5 shadow-sm font-black text-alfa-blue outline-none focus:border-alfa-neon-blue transition-all"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+                    <AlfaButton onClick={() => exportToCSV(exam.id)} variant="outline" className="h-10 text-[10px] font-black uppercase">
+                        <Download className="w-3.5 h-3.5 mr-1" /> EXCEL
+                    </AlfaButton>
                 </div>
 
-                <AlfaCard className="overflow-hidden p-0 border-white shadow-2xl">
+                <AlfaCard className="overflow-hidden border-white shadow-xl p-0">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-center border-collapse">
+                        <table className="w-full border-collapse" dir={isRtl ? 'rtl' : 'ltr'}>
                             <thead className="bg-alfa-blue/5 border-b border-alfa-blue/10">
                                 <tr>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'اسم الموظف' : 'Name'}</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'الكود' : 'Code'}</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'المنطقة' : 'Region'}</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'الدرجة' : 'Score'}</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'النسبة' : 'Percentage'}</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">Action</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'حذف' : 'Delete'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-start">{lang === 'ar' ? 'الموظف' : 'Employee'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'الكود' : 'ID'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'المنطقة' : 'Region'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'النقاط' : 'Points'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'النسبة' : 'Percent'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'الإجراء' : 'Action'}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-alfa-blue/5">
-                                {examUsers
-                                    .filter(u => !searchTerm || u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.employeeId.includes(searchTerm))
-                                    .map(u => {
-                                        const res = u.examResults!.find(r => r.examId === selectedExamId)!;
-                                        const region = MOCK_REGIONS.find(r => r.id === u.region);
-                                        const isAllowed = (u.allowedRetakes || []).includes(selectedExamId);
-                                        return (
-                                            <tr key={u.id}>
-                                                <td className="px-6 py-5 font-black text-alfa-blue text-sm">{u.name}</td>
-                                                <td className="px-6 py-5 font-black text-alfa-blue/40 text-[10px]">{u.employeeId}</td>
-                                                <td className="px-6 py-5 font-black text-alfa-blue/60 text-xs">{lang === 'ar' ? region?.name.ar : region?.name.en}</td>
-                                                <td className="px-6 py-5 font-black text-emerald-600 text-sm">{res.rawScore || 0}</td>
-                                                <td className="px-6 py-5 font-black text-alfa-neon-blue text-sm">{res.score}%</td>
-                                                <td className="px-6 py-5">
-                                                    <button 
-                                                        onClick={() => toggleRetake(u.id, selectedExamId)}
-                                                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${isAllowed ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue/40'}`}
-                                                    >
-                                                        {isAllowed ? 'ALLOWED' : 'ALLOW RETAKE'}
-                                                    </button>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    <button 
-                                                        onClick={async () => {
-                                                            if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذه النتيجة؟ سيتم تصفير درجة الموظف لهذا الاختبار.' : 'Are you sure you want to delete this result? The employee score for this exam will be reset.')) return;
-                                                            try {
-                                                                // Delete from Supabase
-                                                                const { error: resErr } = await supabase.from('results').delete().eq('user_id', u.id).eq('exam_id', selectedExamId);
-                                                                if (resErr) throw resErr;
-
-                                                                // Update User locally and in DB
-                                                                const updatedResults = u.examResults!.filter(r => r.examId !== selectedExamId);
-                                                                const newTotal = updatedResults.reduce((acc, r) => acc + (r.score || 0), 0);
-                                                                const newLast = updatedResults.length > 0 ? updatedResults[updatedResults.length - 1].score : 0;
-
-                                                                await supabase.from('users').update({
-                                                                    total_score: newTotal,
-                                                                    last_score: newLast,
-                                                                    totalScore: newTotal,
-                                                                    lastScore: newLast,
-                                                                    exam_results: updatedResults
-                                                                }).eq('id', u.id);
-
-                                                                setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, totalScore: newTotal, lastScore: newLast, examResults: updatedResults } : usr));
-                                                                addLog(`Result deleted for user ${u.id}`);
-                                                            } catch (err: any) {
-                                                                alert("Error deleting result: " + err.message);
-                                                            }
-                                                        }}
-                                                        className="p-2 rounded-lg bg-red-50 text-alfa-red hover:bg-red-100"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
+                                {takers.map(u => {
+                                    const result = u.examResults.find(r => r.examId === exam.id);
+                                    const region = MOCK_REGIONS.find(r => r.id === u.region);
+                                    const isAllowed = (u.allowedRetakes || []).includes(exam.id);
+                                    return (
+                                        <tr key={u.id} className="hover:bg-alfa-blue/[0.02] transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-alfa-blue flex items-center justify-center font-black text-white text-[10px] shadow-md">{u.name[0]}</div>
+                                                    <span className="font-black text-alfa-blue text-sm">{u.name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-center font-black text-alfa-blue/40 text-[10px] font-mono">{u.employeeId}</td>
+                                            <td className="px-6 py-4 text-center text-[10px] font-black opacity-50 uppercase">{region ? (lang === 'ar' ? region.name.ar : region.name.en) : u.region}</td>
+                                            <td className="px-6 py-4 text-center font-black text-alfa-blue">{result?.rawScore || 0}</td>
+                                            <td className="px-6 py-4 text-center">
+                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black ${result?.score && result.score >= 50 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                                    {result?.score}%
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                <button 
+                                                    onClick={() => toggleRetake(u.id, exam.id)} 
+                                                    className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all ${isAllowed ? 'bg-amber-100 text-amber-600 border-amber-200 shadow-sm' : 'bg-alfa-blue/5 text-alfa-blue/40 border border-transparent shadow-sm hover:border-alfa-blue/20'}`}
+                                                >
+                                                    {isAllowed ? (lang === 'ar' ? 'مسموح' : 'Allowed') : (lang === 'ar' ? 'سماح بالإعادة' : 'Allow Retake')}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
                                 })}
                             </tbody>
                         </table>
@@ -1690,130 +1518,73 @@ const AdminResults = () => {
                 </AlfaCard>
             </div>
         );
-    }
+    };
 
     return (
-        <div className="min-h-screen p-4 sm:p-12 max-w-6xl mx-auto flex flex-col gap-10 pb-32" dir={isRtl ? 'rtl' : 'ltr'}>
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-alfa-blue p-8 rounded-[2.5rem] relative overflow-hidden text-white border border-white/20">
+        <div className="min-h-screen p-4 sm:p-6 lg:p-12 max-w-6xl mx-auto flex flex-col gap-8 pb-32" dir={isRtl ? 'rtl' : 'ltr'}>
+            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 bg-alfa-blue p-6 rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue/20" />
                 <div className="flex items-center gap-4 relative z-10">
-                    <button onClick={() => setScreen('admin_dashboard')} className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center"><ArrowLeft className={isRtl ? 'rotate-180' : ''} /></button>
+                    <button onClick={() => selectedExamId ? setSelectedExamId(null) : setScreen('admin_dashboard')} className="w-12 h-12 bg-white/10 alfa-glass rounded-2xl flex items-center justify-center text-white border-white/20">
+                        <ArrowLeft className={`w-6 h-6 ${isRtl ? 'rotate-180' : ''}`} />
+                    </button>
                     <div>
-                        <h1 className="text-3xl font-black">{lang === 'ar' ? 'تقارير الأداء التفصيلية' : 'Performance Reports'}</h1>
-                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mt-1">Select an exam or region to view data</p>
+                        <h1 className="text-2xl font-black text-white">{selectedExamId ? (lang === 'ar' ? 'تقرير التفصيلي' : 'Detailed Report') : (lang === 'ar' ? 'تقارير الاختبارات' : 'Exam Reports')}</h1>
+                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mt-1">Analytics & Excel Export</p>
                     </div>
                 </div>
+                {!selectedExamId && (
+                    <AlfaButton onClick={() => exportToCSV()} variant="outline" className="h-12 bg-white/10 text-white border-white/20">
+                        <FileSpreadsheet className="w-5 h-5 mr-2" /> {lang === 'ar' ? 'تصدير شامل' : 'Global Export'}
+                    </AlfaButton>
+                )}
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="col-span-full mb-2">
-                    <h2 className="text-xs font-black text-alfa-blue/40 uppercase tracking-[0.3em] px-4">{lang === 'ar' ? 'نتائج حسب الاختبار' : 'View Results by Exam'}</h2>
-                </div>
-                {exams.map(e => {
-                    const submissionCount = users.filter(u => u.role === 'user' && (u.examResults || []).some(r => r.examId === e.id)).length;
-                    return (
-                        <button key={e.id} onClick={() => setSelectedExamId(e.id)} className="group text-start border-none outline-none">
-                            <AlfaCard className="h-full border-white shadow-xl hover:border-alfa-neon-blue transition-all group-hover:translate-y-[-5px]">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-4 rounded-2xl bg-alfa-blue/5 text-alfa-blue group-hover:bg-alfa-blue group-hover:text-white transition-all">
-                                        <ClipboardList className="w-6 h-6" />
+            {!selectedExamId ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {exams.map(ex => {
+                        const count = users.filter(u => u.role === 'user' && (u.examResults || []).some(r => r.examId === ex.id)).length;
+                        return (
+                            <button key={ex.id} onClick={() => setSelectedExamId(ex.id)} className="text-start group">
+                                <AlfaCard className="h-full hover:border-alfa-neon-blue/40 hover:-translate-y-1 transition-all duration-500 overflow-hidden relative">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-alfa-neon-blue/5 rounded-full -mr-16 -mt-16 blur-2xl" />
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-14 h-14 bg-alfa-blue/5 rounded-2xl flex items-center justify-center group-hover:bg-alfa-blue text-alfa-blue group-hover:text-white transition-all shadow-inner border border-alfa-blue/10">
+                                            <Trophy className="w-7 h-7" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-black text-alfa-blue text-lg uppercase tracking-tight">{lang === 'ar' ? ex.name.ar : ex.name.en}</h3>
+                                            <p className="text-[10px] font-black opacity-30 uppercase">{count} Submissions</p>
+                                        </div>
                                     </div>
-                                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">{submissionCount} Submits</span>
-                                </div>
-                                <h3 className="text-xl font-black text-alfa-blue group-hover:text-alfa-neon-blue transition-colors leading-tight">{lang === 'ar' ? e.name.ar : e.name.en}</h3>
-                                <p className="text-[9px] font-black text-alfa-blue/20 uppercase tracking-widest mt-2">Click to view employee scores</p>
-                            </AlfaCard>
-                        </button>
-                    );
-                })}
-            </div>
-
-            <div className="mt-12 space-y-8">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4">
-                    <h2 className="text-xs font-black text-alfa-blue/40 uppercase tracking-[0.3em]">{lang === 'ar' ? 'النتائج التراكمية حسب المنطقة' : 'Cumulative Results by Region'}</h2>
-                    <div className="flex gap-2">
-                        <AlfaButton variant="outline" className="h-10 text-[9px]" onClick={() => exportToCSV()}><FileSpreadsheet className="w-3 h-3 mr-1" /> Export Regional CSV</AlfaButton>
-                    </div>
+                                    <div className="flex justify-between items-center mt-6">
+                                        <span className="text-[10px] font-black text-alfa-neon-blue uppercase tracking-widest">{lang === 'ar' ? 'عرض التفاصيل' : 'View Details'}</span>
+                                        <ChevronRight className={`w-4 h-4 text-alfa-neon-blue ${isRtl ? 'rotate-180' : ''}`} />
+                                    </div>
+                                </AlfaCard>
+                            </button>
+                        );
+                    })}
                 </div>
-
-                <div className="relative mx-4">
-                    <Search className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-5 h-5 text-alfa-blue/20`} />
-                    <input 
-                        type="text" 
-                        placeholder={lang === 'ar' ? 'ابحث عن موظف بالاسم أو الكود...' : 'Search for an employee...'}
-                        className={`w-full h-14 ${isRtl ? 'pr-12 pl-6' : 'pl-12 pr-6'} rounded-2xl bg-white border border-black/5 shadow-sm font-black text-alfa-blue outline-none focus:border-alfa-neon-blue transition-all`}
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-                
-                {MOCK_REGIONS.map(region => {
-                    const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
-                    
-                    // Filter region users by search term
-                    const filteredUsers = regionUsers.filter(u => 
-                        !searchTerm || 
-                        u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        u.employeeId.includes(searchTerm)
-                    );
-
-                    // If searching and no results in this region, hide it. 
-                    // If not searching, show region (optional, or hide by default as requested?)
-                    // USER SAID: "تكون فارغه لكي لا تقوم بعمل زحمه" -> Let's show nothing until search term is provided if they want it empty.
-                    if (searchTerm === '' && regionUsers.length > 0) {
-                         // As requested, keep it empty/clean until search? 
-                         // Or maybe just show regions?
-                         // Let's hide the user tables until search is entered.
-                         return null;
-                    }
-
-                    if (filteredUsers.length === 0) return null;
-                    const avgScore = Math.round(filteredUsers.reduce((acc, u) => acc + (u.totalScore || 0), 0) / filteredUsers.length);
-
-                    return (
-                        <AlfaCard key={region.id} className="border-white shadow-xl overflow-hidden p-0">
-                            <div className="p-6 bg-alfa-blue/[0.02] border-b border-alfa-blue/5 flex justify-between items-center">
-                                <div>
-                                    <h3 className="text-xl font-black text-alfa-blue">{lang === 'ar' ? region.name.ar : region.name.en}</h3>
-                                    <p className="text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest">{filteredUsers.length} Results Found</p>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-2xl font-black text-alfa-neon-blue">{avgScore} pt</span>
-                                    <p className="text-[8px] font-black opacity-30 uppercase">Avg Performance</p>
-                                </div>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead className="bg-alfa-blue/5 text-[9px] font-black uppercase text-alfa-blue/40 tracking-widest">
-                                        <tr>
-                                            <th className="px-6 py-4">Employee</th>
-                                            <th className="px-6 py-4">ID</th>
-                                            <th className="px-6 py-4 text-center">Exams</th>
-                                            <th className="px-6 py-4 text-right">Total Pts</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-alfa-blue/5">
-                                        {filteredUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => (
-                                            <tr key={u.id}>
-                                                <td className="px-6 py-4 font-black text-alfa-blue text-sm">{u.name}</td>
-                                                <td className="px-6 py-4 font-black text-alfa-blue/40 text-[10px]">{u.employeeId}</td>
-                                                <td className="px-6 py-4 text-center font-black text-alfa-blue/60 text-xs text-center">{(u.examResults || []).length}</td>
-                                                <td className="px-6 py-4 text-right font-black text-alfa-blue text-sm">{u.totalScore}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </AlfaCard>
-                    );
-                })}
-
-                {searchTerm === '' && (
-                    <div className="flex flex-col items-center justify-center py-20 opacity-20">
-                        <UserCheck className="w-20 h-20 mb-4" />
-                        <p className="font-black uppercase tracking-[0.2em] text-sm">{lang === 'ar' ? 'أدخل اسمًا للبحث عن النتائج' : 'Enter a name to view results'}</p>
+            ) : (
+                renderExamStats(exams.find(e => e.id === selectedExamId)!)
+            )}
+            
+            {!selectedExamId && (
+                <AlfaCard title={lang === 'ar' ? 'مساهمة المناطق' : 'Regional Share'} className="mt-8">
+                    <div className="h-64 sm:h-80 w-full mt-6">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={MOCK_REGIONS.map(r => ({ name: lang === 'ar' ? r.name.ar : r.name.en, score: users.filter(u => u.region === r.id).reduce((acc, u) => acc + u.totalScore, 0) }))}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#00285510" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
+                                <Tooltip contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 10px 30px rgba(0,40,85,0.08)', fontWeight: 900 }} />
+                                <Area type="monotone" dataKey="score" stroke="#002855" strokeWidth={4} fill="#002855" fillOpacity={0.05} />
+                            </AreaChart>
+                        </ResponsiveContainer>
                     </div>
-                )}
-            </div>
+                </AlfaCard>
+            )}
         </div>
     );
 };
@@ -1947,10 +1718,6 @@ const AdminResults = () => {
                             const info = `User: ${user?.name} (${user?.id})\nUsers: ${users.length}\nExams: ${exams.length}\nQuestions: ${questions.length}\nEnv: ${import.meta.env.VITE_SUPABASE_URL ? 'Keys Found' : 'Missing Keys'}`;
                             alert(info);
                         }}>Diagnostics</AlfaButton>
-
-                        <AlfaButton variant="danger" className="h-12 text-xs !px-4 shadow-neon-red" onClick={resetAllScores}>
-                            <Trash2 className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'تصفير جميع النتائج' : 'Reset All Scores'}
-                        </AlfaButton>
                     </div>
 
                     <div className="mt-4 p-4 bg-black/5 rounded-xl">
@@ -2014,15 +1781,16 @@ const AdminResults = () => {
                             const sql = `ALTER TABLE exams ADD COLUMN IF NOT EXISTS points int8 DEFAULT 100;
 ALTER TABLE exams ADD COLUMN IF NOT EXISTS type text DEFAULT 'monthly';
 ALTER TABLE exams ADD COLUMN IF NOT EXISTS group_name text DEFAULT '';
-ALTER TABLE exams ADD COLUMN IF NOT EXISTS allowed_regions jsonb DEFAULT '[]';
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS text_ar text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS text_en text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS correct_answer text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_ar text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_en text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS points int8;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_retakes jsonb DEFAULT '[]';
-ALTER TABLE results ADD COLUMN IF NOT EXISTS answers jsonb DEFAULT '{}';
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option1 text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option2 text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option3 text;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS option4 text;
 ALTER TABLE exams DISABLE ROW LEVEL SECURITY;
 ALTER TABLE questions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE results DISABLE ROW LEVEL SECURITY;
@@ -2112,9 +1880,13 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
 
     const deleteUser = async (id: string) => {
         if (id === 'admin') return;
-        if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الموظف؟' : 'Are you sure you want to delete this user?')) return;
+        if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا الموظف نهائياً مع جميع نتائجه؟' : 'Are you sure you want to delete this user and all their results permanently?')) return;
         
         try {
+          // Delete results first
+          const { error: resError } = await supabase.from('results').delete().eq('user_id', id);
+          if (resError) console.warn("Results delete warning:", resError);
+
           const { error } = await supabase.from('users').delete().eq('id', id);
           if (error) throw error;
           setUsers(users.filter(u => u.id !== id));
@@ -2206,6 +1978,30 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
     );
   };
 
+  const StatsScreen = () => (
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto flex flex-col gap-6" dir={isRtl ? 'rtl' : 'ltr'}>
+        <header className="flex items-center gap-4 mb-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue/20" />
+            <button onClick={() => setScreen('dashboard')} className="w-10 h-10 sm:w-14 sm:h-14 bg-white/10 alfa-glass rounded-xl flex items-center justify-center shadow-md active:scale-95 transition-all text-white border-white/20 relative z-10">
+                <ArrowLeft className={`w-6 h-6 ${isRtl ? 'rotate-180' : ''}`} />
+            </button>
+            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight relative z-10">📉 {lang === 'ar' ? 'إحصائياتي' : 'My Statistics'}</h1>
+        </header>
+        <div className="grid grid-cols-2 gap-4">
+            <AlfaCard title={`${user?.lastScore}%`} subtitle={text.latestResult} />
+            <AlfaCard title={user?.totalScore?.toLocaleString() ?? '0'} subtitle={text.totalExp} />
+        </div>
+        <AlfaCard title="📈 Monthly Performance">
+            <div className="h-48 w-full mt-4">
+               <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={MOCK_PROGRESS}>
+                    <Area type="monotone" dataKey="score" stroke="#002855" strokeWidth={3} fill="#002855" fillOpacity={0.05} />
+                  </AreaChart>
+               </ResponsiveContainer>
+            </div>
+        </AlfaCard>
+    </div>
+  );
 
   const AlfaBottomNav = () => {
     if (screen === 'login' || screen === 'exam') return null;
@@ -2218,8 +2014,9 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
     ];
 
     const userItems = [
-        { id: 'dashboard', icon: <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📊 الإحصائيات' : '📊 Stats' },
         { id: 'months', icon: <Shield className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📝 الاختبارات' : '📝 Exams' },
+        { id: 'stats', icon: <Activity className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📈 النتائج' : '📈 Results' },
+        { id: 'dashboard', icon: <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8" />, label: lang === 'ar' ? '📊 الإحصائيات' : '📊 Stats' },
     ];
 
     const items = user?.role === 'admin' ? adminItems : userItems;
@@ -2363,9 +2160,9 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
 
     const [isSaving, setIsSaving] = useState(false);
 
-    const toggleRegion = (regId: string) => {
+    const toggleRegion = (id: string) => {
         setAllowedRegions(prev => 
-            prev.includes(regId) ? prev.filter(id => id !== regId) : [...prev, regId]
+            prev.includes(id) ? prev.filter(r => r.id !== id) : [...prev, id]
         );
     };
 
@@ -2388,8 +2185,8 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
         // Instant UI Update
         setExams(prev => {
             const exists = prev.find(e => e.id === id);
-            if (exists) return prev.map(e => e.id === id ? dataToSave : e);
-            return [...prev, dataToSave];
+            if (exists) return prev.map(e => e.id === id ? { ...dataToSave, allowedRegions } : e);
+            return [...prev, { ...dataToSave, allowedRegions }];
         });
         setScreen('admin_exams');
         setEditingExam(null);
@@ -2439,28 +2236,29 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
                             )}
                             <AlfaInput label="Arabic Name" value={arName} onChange={(e) => setArName(e.target.value)} />
                             <AlfaInput label="English Name" value={enName} onChange={(e) => setEnName(e.target.value)} />
+                            
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black opacity-30 mt-1 uppercase tracking-widest px-2">
+                                    {lang === 'ar' ? 'المناطق المسموح لها (اتركه فارغاً للكل)' : 'Allowed Regions (Leave empty for all)'}
+                                </label>
+                                <div className="flex flex-wrap gap-2 p-4 bg-alfa-blue/5 rounded-2xl border border-alfa-blue/10 max-h-40 overflow-y-auto">
+                                    {MOCK_REGIONS.map(r => (
+                                        <button 
+                                            key={r.id}
+                                            onClick={() => toggleRegion(r.id)}
+                                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${allowedRegions.includes(r.id) ? 'bg-alfa-blue text-white shadow-md' : 'bg-white/50 text-alfa-blue/40 border border-transparent'}`}
+                                        >
+                                            {lang === 'ar' ? r.name.ar : r.name.en}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
                             <div className="grid grid-cols-2 gap-4">
                                 <AlfaInput label="Duration (Seconds)" type="number" value={duration.toString()} onChange={(e) => setDuration(Number(e.target.value))} />
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] font-black opacity-30 mt-1 uppercase tracking-widest px-2">Total Score</label>
                                     <AlfaInput label="Total Points" type="number" value={totalPoints.toString()} onChange={(e) => setTotalPoints(Number(e.target.value))} />
-                                </div>
-                            </div>
-                            
-                            <div className="space-y-2 mt-2">
-                                <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">
-                                    {lang === 'ar' ? 'تحديد المناطق المسموح لها (اترك فارغاً للكل)' : 'Allowed Regions (Leave empty for all)'}
-                                </label>
-                                <div className="flex flex-wrap gap-2 p-3 bg-white/50 rounded-2xl border border-black/5">
-                                    {MOCK_REGIONS.map(reg => (
-                                        <button 
-                                            key={reg.id} 
-                                            onClick={() => toggleRegion(reg.id)}
-                                            className={`px-3 py-2 rounded-xl text-[10px] font-black transition-all ${allowedRegions.includes(reg.id) ? 'bg-alfa-blue text-white shadow-md' : 'bg-white text-alfa-blue/40 border border-black/5'}`}
-                                        >
-                                            {lang === 'ar' ? reg.name.ar : reg.name.en}
-                                        </button>
-                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -2720,10 +2518,13 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
                             text={text}
                             getExamQuestions={getExamQuestions}
                             setScreen={setScreen}
+                            timer={examTimer}
+                            setTimer={setExamTimer}
                         />
                     )}
                     {screen === 'result' && <ResultScreen key="result" />}
             {screen === 'review' && <ReviewScreen key="review" />}
+            {screen === 'stats' && <StatsScreen key="stats" />}
             {screen === 'admin_dashboard' && <AdminDashboard key="admin" />}
             {screen === 'admin_users' && <AdminUsers key="admin_users" />}
             {screen === 'admin_exams' && <AdminExams key="admin_exams" />}
