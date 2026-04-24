@@ -614,11 +614,111 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
   const [editingExam, setEditingExam] = useState<ExamMonth | null>(null);
   
   // Fetch Data from Supabase
+  const fetchInitialData = async () => {
+    addLog("Starting initial data sync...");
+    setDbStatus({ status: 'syncing' });
+    
+    // Load local cache as backup
+    try {
+      const backupQs = localStorage.getItem('alfa_questions_backup');
+      const backupExams = localStorage.getItem('alfa_exams_backup');
+      if (backupQs && backupQs !== 'undefined') setQuestions(JSON.parse(backupQs));
+      if (backupExams && backupExams !== 'undefined') setExams(JSON.parse(backupExams));
+    } catch (e) {
+      console.warn("Failed to load local backup:", e);
+    }
+
+    try {
+      // Core Fetch logic
+      addLog("Attempting to reach Global Server...");
+      const { data: globalExams, error: eErr } = await supabase.from('exams').select('*');
+      const { data: globalQs, error: qErr } = await supabase.from('questions').select('*');
+
+      if (eErr || qErr) throw new Error(eErr?.message || qErr?.message);
+
+      if (globalExams && globalExams.length > 0) {
+          addLog(`Found ${globalExams.length} exams on server.`);
+          const processedExams = globalExams.map(e => ({
+              ...e,
+              id: String(e.id),
+              name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.id, en: e.name_en || e.id },
+              status: e.status || 'active',
+              questions: Array.isArray(e.questions) ? e.questions : [],
+              points: Number(e.points || 100)
+          }));
+          setExams(processedExams);
+          localStorage.setItem('alfa_exams_backup', JSON.stringify(processedExams));
+          setGlobalCounts(prev => ({ ...prev, exams: globalExams.length }));
+      }
+
+      if (globalQs && globalQs.length > 0) {
+          addLog(`Found ${globalQs.length} questions on server.`);
+          const processedQs = globalQs.map(q => ({
+              ...q,
+              id: String(q.id),
+              text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.id, en: q.text_en || q.id },
+              correctAnswer: String(q.correct_answer || q.correctAnswer || ''),
+              options: typeof q.options === 'object' ? q.options : { ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), en: [] },
+              points: Number(q.points || 10)
+          }));
+          setQuestions(processedQs);
+          localStorage.setItem('alfa_questions_backup', JSON.stringify(processedQs));
+          setGlobalCounts(prev => ({ ...prev, questions: globalQs.length }));
+      }
+      
+      setDbStatus({ status: 'connected' });
+      addLog("Global Sync Completed Successfully.");
+
+      const { data: usersData } = await supabase.from('users').select('*');
+      const { data: resultsData } = await supabase.from('results').select('*');
+      
+      if (usersData) {
+        const mappedUsers = usersData.map(u => {
+          const userResults = (resultsData || [])
+            .filter(r => r.user_id === u.id)
+            .map(r => ({
+              examId: String(r.exam_id),
+              score: Number(r.score),
+              rawScore: Number(r.raw_score),
+              maxScore: Number(r.max_score),
+              date: r.created_at || r.date,
+              answers: r.answers
+            }));
+          
+          // Calculate total score from raw points for better accuracy
+          const calculatedTotalRaw = userResults.reduce((acc, res) => acc + (res.rawScore || 0), 0);
+
+          return {
+            ...u,
+            employeeId: u.employee_id || u.employeeId,
+            totalScore: calculatedTotalRaw,
+            lastScore: Number(u.last_score || u.lastScore || 0),
+            examResults: userResults,
+            allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
+          };
+        });
+        setUsers(mappedUsers as UserData[]);
+        
+        // Refresh logged in user data if exists
+        const currentUserId = user?.id; // Use ref-like access if needed, but here simple state check
+        if (currentUserId && currentUserId !== 'admin') {
+          setUser(prev => {
+              if (!prev || prev.id === 'admin') return prev;
+              const updated = mappedUsers.find(curr => curr.id === prev.id);
+              return updated ? (updated as UserData) : prev;
+          });
+        }
+      }
+    } catch (err: any) {
+      addLog("GLOBAL FETCH FAILED: " + err.message);
+      setDbStatus({ status: 'error', details: err.message });
+    }
+  };
+
   useEffect(() => {
     const handleGlobalError = (event: PromiseRejectionEvent | ErrorEvent) => {
         const error = (event as any).reason || (event as any).message || 'Unknown Error';
         console.error("Global Error Caught:", error);
-        // Only alert for major issues
         if (String(error).includes('Supabase') || String(error).includes('API')) {
             alert("⚠️ Connection Error: " + String(error));
         }
@@ -626,143 +726,28 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     window.addEventListener('unhandledrejection', handleGlobalError as any);
     window.addEventListener('error', handleGlobalError as any);
     
-    async function fetchData() {
-      addLog("Starting initial data sync...");
-      setDbStatus({ status: 'syncing' });
-      
-      // Load local cache as backup
-      try {
-        const backupQs = localStorage.getItem('alfa_questions_backup');
-        const backupExams = localStorage.getItem('alfa_exams_backup');
-        if (backupQs && backupQs !== 'undefined') setQuestions(JSON.parse(backupQs));
-        if (backupExams && backupExams !== 'undefined') setExams(JSON.parse(backupExams));
-      } catch (e) {
-        console.warn("Failed to load local backup:", e);
-      }
+    fetchInitialData();
 
-      try {
-        // Core Fetch logic
-        addLog("Attempting to reach Global Server...");
-        const { data: globalExams, error: eErr } = await supabase.from('exams').select('*');
-        const { data: globalQs, error: qErr } = await supabase.from('questions').select('*');
-
-        if (eErr || qErr) throw new Error(eErr?.message || qErr?.message);
-
-        if (globalExams && globalExams.length > 0) {
-            addLog(`Found ${globalExams.length} exams on server.`);
-            const processedExams = globalExams.map(e => ({
-                ...e,
-                id: String(e.id),
-                name: typeof e.name === 'object' ? e.name : { ar: e.name_ar || e.id, en: e.name_en || e.id },
-                status: e.status || 'active',
-                questions: Array.isArray(e.questions) ? e.questions : [],
-                points: Number(e.points || 100)
-            }));
-            setExams(processedExams);
-            localStorage.setItem('alfa_exams_backup', JSON.stringify(processedExams));
-            setGlobalCounts(prev => ({ ...prev, exams: globalExams.length }));
-        }
-
-        if (globalQs && globalQs.length > 0) {
-            addLog(`Found ${globalQs.length} questions on server.`);
-            const processedQs = globalQs.map(q => ({
-                ...q,
-                id: String(q.id),
-                text: typeof q.text === 'object' ? q.text : { ar: q.text_ar || q.id, en: q.text_en || q.id },
-                correctAnswer: String(q.correct_answer || q.correctAnswer || ''),
-                options: typeof q.options === 'object' ? q.options : { ar: [q.option1, q.option2, q.option3, q.option4].filter(Boolean), en: [] },
-                points: Number(q.points || 10)
-            }));
-            setQuestions(processedQs);
-            localStorage.setItem('alfa_questions_backup', JSON.stringify(processedQs));
-            setGlobalCounts(prev => ({ ...prev, questions: globalQs.length }));
-        }
-        
-        setDbStatus({ status: 'connected' });
-        addLog("Global Sync Completed Successfully.");
-
-        const { data: usersData } = await supabase.from('users').select('*');
-        const { data: resultsData } = await supabase.from('results').select('*');
-        
-        if (usersData) {
-          const mappedUsers = usersData.map(u => {
-            const userResults = (resultsData || [])
-              .filter(r => r.user_id === u.id)
-              .map(r => ({
-                examId: String(r.exam_id),
-                score: Number(r.score),
-                rawScore: Number(r.raw_score),
-                maxScore: Number(r.max_score),
-                date: r.created_at || r.date
-              }));
-            
-            // Calculate total score from results if DB total_score is 0 for robustness
-            const dbScore = Number(u.total_score || u.totalScore || 0);
-            const calculatedTotal = userResults.reduce((acc, res) => acc + res.score, 0);
-            const currentTotalScore = dbScore > 0 ? dbScore : calculatedTotal;
-
-            return {
-              ...u,
-              employeeId: u.employee_id || u.employeeId,
-              totalScore: currentTotalScore,
-              lastScore: Number(u.last_score || u.lastScore || 0),
-              examResults: userResults,
-              allowedRetakes: Array.isArray(u.allowed_retakes) ? u.allowed_retakes : []
-            };
-          });
-          setUsers(mappedUsers as UserData[]);
-          
-          // Refresh logged in user data if exists
-          if (user && user.id !== 'admin') {
-            const updatedUser = mappedUsers.find(curr => curr.id === user.id);
-            if (updatedUser) setUser(updatedUser as UserData);
-          }
-        }
-      } catch (err: any) {
-        addLog("GLOBAL FETCH FAILED: " + err.message);
-        setDbStatus({ status: 'error', details: err.message });
-      }
-    }
-
-    fetchData();
-
-    // Setup Real-time subscriptions with incremental updates
+    // Setup Real-time subscriptions
     const usersChannel = supabase.channel('users_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
           if (payload.eventType === 'INSERT') {
-              const newUser = payload.new as UserData;
-              setUsers(prev => prev.some(u => u.id === newUser.id) ? prev : [...prev, newUser]);
+              fetchInitialData();
           } else if (payload.eventType === 'UPDATE') {
-              setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
+              fetchInitialData();
           } else if (payload.eventType === 'DELETE') {
-              setUsers(prev => prev.filter(u => u.id === payload.old.id));
+              setUsers(prev => prev.filter(u => u.id !== payload.old.id));
           }
       }).subscribe();
 
     const examsChannel = supabase.channel('exams_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, (payload) => {
-          if (payload.eventType === 'INSERT') {
-              const e = payload.new;
-              setExams(prev => prev.some(item => item.id === e.id) ? prev : [...prev, { ...e, groupName: e.group_name } as ExamMonth]);
-          } else if (payload.eventType === 'UPDATE') {
-              const e = payload.new;
-              setExams(prev => prev.map(item => item.id === e.id ? { ...item, ...e, groupName: e.group_name } : item));
-          } else if (payload.eventType === 'DELETE') {
-              setExams(prev => prev.filter(item => item.id === payload.old.id));
-          }
-      }).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchInitialData()).subscribe();
 
     const questionsChannel = supabase.channel('questions_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              fetchData(); // Questions have complex mapping, easier to re-fetch
-          } else if (payload.eventType === 'DELETE') {
-              setQuestions(prev => prev.filter(q => q.id !== String(payload.old.id)));
-          }
-      }).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, () => fetchInitialData()).subscribe();
 
     const resultsChannel = supabase.channel('results_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => fetchData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, () => fetchInitialData()).subscribe();
 
     return () => {
       supabase.removeChannel(usersChannel);
@@ -803,34 +788,76 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
       });
       
       if (!foundUser) {
-        // Create a new user dynamically
-        const newUser: UserData = {
-          id: 'u' + Date.now(),
-          name: name,
-          employeeId: employeeIdCode,
-          region: regionId,
-          totalScore: 0,
-          lastScore: 0,
-          badges: [],
-          role: 'user',
-          examResults: []
-        };
+        // Search in Supabase first before creating a new one to prevent duplicates
+        addLog("User not in local state, searching Supabase...");
+        const { data: dbUser, error: searchErr } = await supabase.from('users').select('*').eq('employee_id', employeeIdCode).single();
+        
+        if (dbUser) {
+            addLog("Found user in Supabase.");
+            // Refresh results for this specific user
+            const { data: dbResults } = await supabase.from('results').select('*').eq('user_id', dbUser.id);
+            const userResults = (dbResults || []).map(r => ({
+                examId: String(r.exam_id),
+                score: Number(r.score),
+                rawScore: Number(r.raw_score),
+                maxScore: Number(r.max_score),
+                date: r.created_at || r.date,
+                answers: r.answers
+            }));
 
-        const { error } = await supabase.from('users').insert([{
-            id: newUser.id,
-            name: newUser.name,
-            employee_id: newUser.employeeId,
-            region: newUser.region,
-            role: 'user'
-        }]);
+            const fullUser: UserData = {
+                ...dbUser,
+                employeeId: dbUser.employee_id || dbUser.employeeId,
+                totalScore: Number(dbUser.total_score || 0),
+                lastScore: Number(dbUser.last_score || 0),
+                examResults: userResults,
+                allowedRetakes: Array.isArray(dbUser.allowed_retakes) ? dbUser.allowed_retakes : []
+            };
+            setUser(fullUser);
+            setUsers(prev => [...prev.filter(u => u.id !== fullUser.id), fullUser]);
+        } else {
+            // Create a new user dynamically if really doesn't exist
+            const newUser: UserData = {
+              id: 'u' + Date.now(),
+              name: name,
+              employeeId: employeeIdCode,
+              region: regionId,
+              totalScore: 0,
+              lastScore: 0,
+              badges: [],
+              role: 'user',
+              examResults: []
+            };
 
-        if (error) console.error("Create User Error:", error);
+            const { error } = await supabase.from('users').insert([{
+                id: newUser.id,
+                name: newUser.name,
+                employee_id: newUser.employeeId,
+                region: newUser.region,
+                role: 'user'
+            }]);
 
-        setUsers(prev => [...prev, newUser]);
-        setUser(newUser);
+            if (error) console.error("Create User Error:", error);
+
+            setUsers(prev => [...prev, newUser]);
+            setUser(newUser);
+        }
       } else {
-        // Logged in with existing user - results are already in state from fetchData
-        setUser(foundUser);
+        // User exists in state - but let's refresh their results JUST to be sure
+        addLog("Refreshing existing user results...");
+        const { data: dbResults } = await supabase.from('results').select('*').eq('user_id', foundUser.id);
+        const userResults = (dbResults || []).map(r => ({
+            examId: String(r.exam_id),
+            score: Number(r.score),
+            rawScore: Number(r.raw_score),
+            maxScore: Number(r.max_score),
+            date: r.created_at || r.date,
+            answers: r.answers
+        }));
+
+        const updatedFoundUser = { ...foundUser, examResults: userResults };
+        setUser(updatedFoundUser);
+        setUsers(prev => prev.map(u => u.id === foundUser.id ? updatedFoundUser : u));
       }
       
       setScreen('dashboard');
@@ -1021,7 +1048,7 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         resultsMap.set(res.examId, res);
     });
     const finalUniqueResults = Array.from(resultsMap.values());
-    const newTotalScore = finalUniqueResults.reduce((acc, res) => acc + (res.score || 0), 0);
+    const newTotalScore = finalUniqueResults.reduce((acc, res) => acc + (res.rawScore || 0), 0);
 
     const updatedUser: UserData = {
         ...user,
@@ -1057,16 +1084,22 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
                 }
             }
 
-            // Update User profile (updating both snake_case and camelCase for table compatibility)
-            await supabase.from('users').update({ 
+            // Update User profile
+            const { error: userUpdErr } = await supabase.from('users').update({ 
                 total_score: newTotalScore, 
                 last_score: score,
                 totalScore: newTotalScore,
                 lastScore: score,
                 exam_results: finalUniqueResults
             }).eq('id', user.id);
+
+            if (userUpdErr) {
+                addLog("User Update Error: " + userUpdErr.message);
+            }
             
             addLog("Global Sync: Progress Saved.");
+            // Force a quick global data refresh to sync Admin view
+            fetchInitialData();
         } catch (err: any) {
             console.error("Database Sync Error:", err);
             addLog("Sync Error: " + err.message);
