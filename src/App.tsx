@@ -847,6 +847,11 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         return;
     }
 
+    // New: If it was a retake, consume the permission immediately upon starting
+    if (isAllowedRetake && user) {
+        consumeRetake(user.id, exam.id);
+    }
+
     const examQs = getExamQuestions(exam);
     
     if (examQs.length === 0) {
@@ -860,7 +865,28 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     setScreen('exam');
   };
 
-  const toggleRetake = async (userId: string, examId: string) => {
+    // Consume retake permission once used
+    const consumeRetake = async (userId: string, examId: string) => {
+        setUsers(prev => prev.map(u => {
+            if (u.id === userId) {
+                const updatedRetakes = (u.allowedRetakes || []).filter(id => id !== examId);
+                return { ...u, allowedRetakes: updatedRetakes };
+            }
+            return u;
+        }));
+        
+        if (isSupabaseConfigured) {
+            try {
+                const currentUser = users.find(u => u.id === userId);
+                const updatedRetakes = (currentUser?.allowedRetakes || []).filter(id => id !== examId);
+                await supabase.from('users').update({ allowed_retakes: updatedRetakes }).eq('id', userId);
+            } catch (err) {
+                console.error("Error consuming retake:", err);
+            }
+        }
+    };
+
+    const toggleRetake = async (userId: string, examId: string) => {
     // 1. Update Locally
     let finalRetakes: string[] = [];
     setUsers(users.map(u => {
@@ -885,6 +911,24 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
         if (error) console.error("Error updating allowed retakes:", error);
     } catch (err) {
         console.error("Supabase Error toggleRetake:", err);
+    }
+  };
+
+  const deleteUser = async (id: string) => {
+    if (!confirm(lang === 'ar' ? 'هل أنت متأكد من حذف هذا المستخدم وجميع نتائجه؟' : 'Are you sure you want to delete this user and all their results?')) return;
+    
+    // Remove locally
+    setUsers(prev => prev.filter(u => u.id !== id));
+    
+    if (isSupabaseConfigured) {
+        try {
+            await supabase.from('results').delete().eq('user_id', id);
+            await supabase.from('users').delete().eq('id', id);
+            addLog("User deleted successfully.");
+        } catch (err) {
+            console.error("Error deleting user:", err);
+            addLog("Error deleting user.");
+        }
     }
   };
 
@@ -917,15 +961,20 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     };
     
     const existingResults = user.examResults || [];
-    const updatedResults = [...existingResults, newResult];
     // Recalculate total score from all results for better accuracy
-    const newTotalScore = updatedResults.reduce((acc, res) => acc + (res.score || 0), 0);
+    // Fix: Only take the LATEST score for each unique exam to prevent doubling if review screen triggers something
+    const resultsMap = new Map();
+    [...existingResults, newResult].forEach(res => {
+        resultsMap.set(res.examId, res);
+    });
+    const finalUniqueResults = Array.from(resultsMap.values());
+    const newTotalScore = finalUniqueResults.reduce((acc, res) => acc + (res.score || 0), 0);
 
     const updatedUser: UserData = {
         ...user,
         totalScore: newTotalScore,
         lastScore: score,
-        examResults: updatedResults
+        examResults: finalUniqueResults
     };
     
     // Instant UI feedback
@@ -1080,6 +1129,14 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
     setScreen('login');
   };
 
+  const handleLogout = () => {
+    setUser(null);
+    setActiveExam(null);
+    setExamStep(0);
+    setAnswers({});
+    setScreen('login');
+  };
+
   const DashboardScreen = () => (
     <div className="p-6 sm:p-10 max-w-4xl mx-auto flex flex-col gap-4 sm:gap-6 min-h-full font-alfa overscroll-none" dir={isRtl ? 'rtl' : 'ltr'}>
         <header className="flex justify-between items-center mb-0 sm:mb-2 shrink-0 alfa-glass p-4 sm:p-6 rounded-[2rem] sm:rounded-[3rem] border-white/80 relative overflow-hidden">
@@ -1162,9 +1219,19 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
   );
 
   const MonthsScreen = () => {
-    // تصفية الامتحانات بناءً على النوع
-    const monthlyExams = exams.filter(e => (e.type || 'monthly') === 'monthly');
-    const trainingExams = exams.filter(e => e.type === 'training');
+    // تصفية الامتحانات بناءً على النوع والمنطقة المسموح بها
+    const monthlyExams = exams.filter(e => {
+        const isTypeMatch = (e.type || 'monthly') === 'monthly';
+        const isRegionMatch = !e.allowedRegions || e.allowedRegions.length === 0 || e.allowedRegions.includes(user?.region || '');
+        return isTypeMatch && isRegionMatch;
+    });
+    
+    const trainingExams = exams.filter(e => {
+        const isTypeMatch = e.type === 'training';
+        const isRegionMatch = !e.allowedRegions || e.allowedRegions.length === 0 || e.allowedRegions.includes(user?.region || '');
+        return isTypeMatch && isRegionMatch;
+    });
+    
     const currentList = categoryTab === 'monthly' ? monthlyExams : trainingExams;
 
     return (
@@ -1382,152 +1449,203 @@ ON CONFLICT (id) DO UPDATE SET text_ar = EXCLUDED.text_ar, text_en = EXCLUDED.te
 };
 
 const AdminResults = () => {
-    const exportToCSV = () => {
-        // UTF-8 BOM to make Excel recognize Arabic characters correctly
+    const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
+
+    const exportToCSV = (examId?: string) => {
         const BOM = "\uFEFF";
-        const headers = [lang === 'ar' ? "الاسم,الكود,المنطقة,الدرجة التراكمية,عدد الاختبارات\n" : "Name,Code,Region,Total Score,Exams Taken\n"];
-        
-        const rows = [...MOCK_REGIONS].flatMap(region => {
-            const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
-            return regionUsers.map(u => {
-                const regionName = lang === 'ar' ? region.name.ar : region.name.en;
-                // Escaping commas just in case names have them
-                const name = `"${u.name}"`;
-                const code = `"${u.employeeId}"`;
-                return `${name},${code},${regionName},${u.totalScore},${(u.examResults || []).length}\n`;
+        let headers = "";
+        let rows = [];
+
+        if (examId) {
+            // Detailed Exam Report
+            const exam = exams.find(e => e.id === examId);
+            headers = lang === 'ar' 
+                ? "اسم الموظف,الكود,المنطقة,الدرجة,النسبة المئوية,اسم الاختبار\n" 
+                : "Employee Name,Employee ID,Region,Score Points,Percentage,Exam Name\n";
+            
+            const examResults = users.filter(u => u.role === 'user').flatMap(u => {
+                const res = (u.examResults || []).find(r => r.examId === examId);
+                if (!res) return [];
+                const regionName = MOCK_REGIONS.find(r => r.id === u.region)?.name[lang as 'ar'|'en'] || u.region;
+                return [[
+                    u.name,
+                    u.employeeId,
+                    regionName,
+                    res.rawScore || 0,
+                    `${res.score}%`,
+                    exam?.name[lang as 'ar'|'en'] || 'Exam'
+                ]];
             });
-        });
+
+            rows = examResults.map(r => r.join(',') + '\n');
+        } else {
+            // General Regional Report
+            headers = lang === 'ar' ? "الاسم,الكود,المنطقة,الدرجة التراكمية,عدد الاختبارات\n" : "Name,Code,Region,Total Score,Exams Taken\n";
+            rows = [...MOCK_REGIONS].flatMap(region => {
+                const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
+                return regionUsers.map(u => {
+                    const regionName = lang === 'ar' ? region.name.ar : region.name.en;
+                    return `"${u.name}","${u.employeeId}",${regionName},${u.totalScore},${(u.examResults || []).length}\n`;
+                });
+            });
+        }
         
-        const blob = new Blob([BOM, ...headers, ...rows], { type: 'text/csv;charset=utf-8' });
+        const blob = new Blob([BOM, headers, ...rows], { type: 'text/csv;charset=utf-8' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.setAttribute('hidden', '');
         a.setAttribute('href', url);
-        a.setAttribute('download', `Alfa_Results_${new Date().toLocaleDateString()}.csv`);
+        a.setAttribute('download', `Alfa_Report_${examId || 'Regional'}_${new Date().toLocaleDateString()}.csv`);
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
     };
 
-    return (
-        <div className="min-h-screen p-4 sm:p-6 lg:p-12 max-w-6xl mx-auto flex flex-col gap-10 pb-32" dir={isRtl ? 'rtl' : 'ltr'}>
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 bg-alfa-blue p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.5rem] border border-alfa-neon-blue/40 shadow-xl relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-alfa-blue to-alfa-neon-blue/20" />
-            <div className="flex items-center gap-4 relative z-10">
-                <button onClick={() => setScreen('admin_dashboard')} className="w-10 h-10 sm:w-14 sm:h-14 bg-white/10 alfa-glass rounded-xl flex items-center justify-center shadow-md active:scale-95 transition-all text-white border-white/20">
-                    <ArrowLeft className={`w-6 h-6 ${isRtl ? 'rotate-180' : ''}`} />
-                </button>
-                <div>
-                    <h1 className="text-xl sm:text-2xl font-black text-white">{lang === 'ar' ? 'نتائج المناطق' : 'Regional Results'}</h1>
-                    <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mt-1">Analytics & Export</p>
-                </div>
-            </div>
-            <AlfaButton onClick={exportToCSV} variant="outline" className="h-12 sm:h-14 px-6 relative z-10 bg-white/10 text-white border-white/20">
-                <FileSpreadsheet className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'تصدير إكسيل' : 'Export Excel'}
-            </AlfaButton>
-        </header>
+    if (selectedExamId) {
+        const exam = exams.find(e => e.id === selectedExamId);
+        const examUsers = users.filter(u => u.role === 'user').filter(u => (u.examResults || []).some(r => r.examId === selectedExamId));
 
-            <div className="space-y-12">
-                {MOCK_REGIONS.map(region => {
-                    const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
-                    if (regionUsers.length === 0) return null;
-                    
-                    const avgScore = regionUsers.length > 0 
-                        ? Math.round(regionUsers.reduce((acc, u) => acc + (u.lastScore || 0), 0) / regionUsers.length) 
-                        : 0;
-
-                    return (
-                        <div key={region.id} className="space-y-4">
-                            <div className="flex justify-between items-end px-2">
-                                <div>
-                                    <h2 className="text-xl font-black text-alfa-blue">{lang === 'ar' ? region.name.ar : region.name.en}</h2>
-                                    <p className="text-[9px] font-black text-alfa-blue/40 uppercase tracking-[0.2em]">{regionUsers.length} Employees</p>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-2xl font-black text-alfa-blue">{avgScore}%</span>
-                                    <p className="text-[8px] font-black text-alfa-blue/30 uppercase tracking-widest">{lang === 'ar' ? 'متوسط الأداء' : 'Region Performance'}</p>
-                                </div>
-                            </div>
-
-                            <AlfaCard className="overflow-hidden border-white shadow-xl p-0">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse" dir={isRtl ? 'rtl' : 'ltr'}>
-                                        <thead className="bg-alfa-blue/5 border-b border-alfa-blue/10">
-                                            <tr>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'الموظف' : 'Employee'}</th>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'الكود' : 'ID'}</th>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'آخر اختبار' : 'Last Exam'}</th>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-alfa-blue/50 text-center">{lang === 'ar' ? 'إجمالي النقاط' : 'Score'}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-alfa-blue/5">
-                                            {regionUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => {
-                                                const uResults = u.examResults || [];
-                                                // Sort results to show the latest score for this user
-                                                return (
-                                                    <tr key={u.id} className="hover:bg-alfa-blue/[0.02] transition-colors">
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex items-center gap-3 justify-center sm:justify-start">
-                                                                <div className="w-8 h-8 rounded-lg bg-alfa-blue/5 flex items-center justify-center font-black text-alfa-blue text-[10px]">{u.name[0]}</div>
-                                                                <span className="font-black text-alfa-blue text-sm">{u.name}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-center font-black text-alfa-blue/40 text-[10px] font-mono">{u.employeeId}</td>
-                                                        <td className="px-6 py-4 text-center">
-                                                            <div className="flex flex-col gap-2 items-center">
-                                                                {uResults.length > 0 ? (
-                                                                    uResults.map((res, idx) => {
-                                                                        const isAllowed = (u.allowedRetakes || []).includes(res.examId);
-                                                                        const ex = exams.find(e => e.id === res.examId);
-                                                                        const exName = ex?.name[lang as 'ar'|'en'] || 'Exam';
-                                                                        return (
-                                                                            <div key={idx} className="flex items-center gap-3 bg-alfa-blue/5 p-2 rounded-xl w-full justify-between min-w-[180px] border border-black/5">
-                                                                                <div className="flex flex-col items-start px-2">
-                                                                                    <span className="text-[8px] font-black opacity-40 uppercase truncate max-w-[80px]">{exName}</span>
-                                                                                    <span className="font-black text-alfa-blue text-xs">{res.score}%</span>
-                                                                                </div>
-                                                                                <button 
-                                                                                    onClick={() => toggleRetake(u.id, res.examId)} 
-                                                                                    className={`px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${isAllowed ? 'bg-amber-100 text-amber-600 border border-amber-200 shadow-sm' : 'bg-white/60 text-alfa-blue/40 border border-black/5 shadow-sm hover:border-alfa-blue/20'}`}
-                                                                                >
-                                                                                    {isAllowed ? (lang === 'ar' ? 'مسموح' : 'Allowed') : (lang === 'ar' ? 'سماح بالإعادة' : 'Allow Retake')}
-                                                                                </button>
-                                                                            </div>
-                                                                        );
-                                                                    })
-                                                                ) : (
-                                                                    <span className="text-[9px] font-black opacity-20">---</span>
-                                                                )}
-                                                            </div>
-                                                         </td>
-                                                        <td className="px-6 py-4 text-center">
-                                                            <span className="font-black text-alfa-blue text-sm">{u?.totalScore?.toLocaleString() ?? '0'}</span>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </AlfaCard>
+        return (
+            <div className="min-h-screen p-4 sm:p-12 max-w-6xl mx-auto flex flex-col gap-8 pb-32" dir={isRtl ? 'rtl' : 'ltr'}>
+                <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-alfa-blue p-6 rounded-[2.5rem] relative overflow-hidden border border-white/20">
+                    <div className="flex items-center gap-4 relative z-10">
+                        <button onClick={() => setSelectedExamId(null)} className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center text-white"><ArrowLeft className={isRtl ? 'rotate-180' : ''} /></button>
+                        <div>
+                            <h1 className="text-2xl font-black text-white">{lang === 'ar' ? exam?.name.ar : exam?.name.en}</h1>
+                            <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">{examUsers.length} Submissions</p>
                         </div>
+                    </div>
+                    <AlfaButton onClick={() => exportToCSV(selectedExamId)} variant="outline" className="h-14 px-8 relative z-10 bg-white/10 text-white"><FileSpreadsheet className="w-4 h-4 mr-2" /> {lang === 'ar' ? 'تصدير إكسيل' : 'Export Excel'}</AlfaButton>
+                </header>
+
+                <AlfaCard className="overflow-hidden p-0 border-white shadow-2xl">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-center border-collapse">
+                            <thead className="bg-alfa-blue/5 border-b border-alfa-blue/10">
+                                <tr>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'اسم الموظف' : 'Name'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'الكود' : 'Code'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'المنطقة' : 'Region'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'النقاط' : 'Points'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">{lang === 'ar' ? 'النسبة' : 'Percentage'}</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-alfa-blue/40">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-alfa-blue/5">
+                                {examUsers.map(u => {
+                                    const res = u.examResults!.find(r => r.examId === selectedExamId)!;
+                                    const region = MOCK_REGIONS.find(r => r.id === u.region);
+                                    const isAllowed = (u.allowedRetakes || []).includes(selectedExamId);
+                                    return (
+                                        <tr key={u.id}>
+                                            <td className="px-6 py-5 font-black text-alfa-blue text-sm">{u.name}</td>
+                                            <td className="px-6 py-5 font-black text-alfa-blue/40 text-[10px]">{u.employeeId}</td>
+                                            <td className="px-6 py-5 font-black text-alfa-blue/60 text-xs">{lang === 'ar' ? region?.name.ar : region?.name.en}</td>
+                                            <td className="px-6 py-5 font-black text-emerald-600 text-sm">{res.rawScore || 0}</td>
+                                            <td className="px-6 py-5 font-black text-alfa-neon-blue text-sm">{res.score}%</td>
+                                            <td className="px-6 py-5">
+                                                <button 
+                                                    onClick={() => toggleRetake(u.id, selectedExamId)}
+                                                    className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${isAllowed ? 'bg-amber-100 text-amber-600' : 'bg-alfa-blue/5 text-alfa-blue/40'}`}
+                                                >
+                                                    {isAllowed ? 'ALLOWED' : 'ALLOW RETAKE'}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </AlfaCard>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen p-4 sm:p-12 max-w-6xl mx-auto flex flex-col gap-10 pb-32" dir={isRtl ? 'rtl' : 'ltr'}>
+            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-alfa-blue p-8 rounded-[2.5rem] relative overflow-hidden text-white border border-white/20">
+                <div className="flex items-center gap-4 relative z-10">
+                    <button onClick={() => setScreen('admin_dashboard')} className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center"><ArrowLeft className={isRtl ? 'rotate-180' : ''} /></button>
+                    <div>
+                        <h1 className="text-3xl font-black">{lang === 'ar' ? 'تقارير الأداء التفصيلية' : 'Performance Reports'}</h1>
+                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mt-1">Select an exam or region to view data</p>
+                    </div>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="col-span-full mb-2">
+                    <h2 className="text-xs font-black text-alfa-blue/40 uppercase tracking-[0.3em] px-4">{lang === 'ar' ? 'نتائج حسب الاختبار' : 'View Results by Exam'}</h2>
+                </div>
+                {exams.map(e => {
+                    const submissionCount = users.filter(u => u.role === 'user' && (u.examResults || []).some(r => r.examId === e.id)).length;
+                    return (
+                        <button key={e.id} onClick={() => setSelectedExamId(e.id)} className="group text-start border-none outline-none">
+                            <AlfaCard className="h-full border-white shadow-xl hover:border-alfa-neon-blue transition-all group-hover:translate-y-[-5px]">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-4 rounded-2xl bg-alfa-blue/5 text-alfa-blue group-hover:bg-alfa-blue group-hover:text-white transition-all">
+                                        <ClipboardList className="w-6 h-6" />
+                                    </div>
+                                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">{submissionCount} Submits</span>
+                                </div>
+                                <h3 className="text-xl font-black text-alfa-blue group-hover:text-alfa-neon-blue transition-colors leading-tight">{lang === 'ar' ? e.name.ar : e.name.en}</h3>
+                                <p className="text-[9px] font-black text-alfa-blue/20 uppercase tracking-widest mt-2">Click to view employee scores</p>
+                            </AlfaCard>
+                        </button>
                     );
                 })}
             </div>
 
-            <AlfaCard title={lang === 'ar' ? 'مساهمة المناطق' : 'Regional Share'}>
-                <div className="h-64 sm:h-80 w-full mt-6">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={MOCK_REGIONS.map(r => ({ name: lang === 'ar' ? r.name.ar : r.name.en, score: users.filter(u => u.region === r.id).reduce((acc, u) => acc + u.totalScore, 0) }))}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#00285510" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900, fill: '#00285540' }} />
-                            <Tooltip contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 10px 30px rgba(0,40,85,0.08)', fontWeight: 900 }} />
-                            <Area type="monotone" dataKey="score" stroke="#002855" strokeWidth={4} fill="#002855" fillOpacity={0.05} />
-                        </AreaChart>
-                    </ResponsiveContainer>
+            <div className="mt-12 space-y-8">
+                <div className="flex items-center justify-between px-4">
+                    <h2 className="text-xs font-black text-alfa-blue/40 uppercase tracking-[0.3em]">{lang === 'ar' ? 'النتائج التراكمية حسب المنطقة' : 'Cumulative Results by Region'}</h2>
+                    <AlfaButton variant="outline" className="h-10 text-[9px]" onClick={() => exportToCSV()}><FileSpreadsheet className="w-3 h-3 mr-1" /> Export Regional CSV</AlfaButton>
                 </div>
-            </AlfaCard>
+                
+                {MOCK_REGIONS.map(region => {
+                    const regionUsers = users.filter(u => u.role === 'user' && u.region === region.id);
+                    if (regionUsers.length === 0) return null;
+                    const avgScore = Math.round(regionUsers.reduce((acc, u) => acc + (u.totalScore || 0), 0) / regionUsers.length);
+
+                    return (
+                        <AlfaCard key={region.id} className="border-white shadow-xl overflow-hidden p-0">
+                            <div className="p-6 bg-alfa-blue/[0.02] border-b border-alfa-blue/5 flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-xl font-black text-alfa-blue">{lang === 'ar' ? region.name.ar : region.name.en}</h3>
+                                    <p className="text-[9px] font-black text-alfa-blue/30 uppercase tracking-widest">{regionUsers.length} Users Found</p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-2xl font-black text-alfa-neon-blue">{avgScore} pt</span>
+                                    <p className="text-[8px] font-black opacity-30 uppercase">Avg Cumulative</p>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-alfa-blue/5 text-[9px] font-black uppercase text-alfa-blue/40 tracking-widest">
+                                        <tr>
+                                            <th className="px-6 py-4">Employee</th>
+                                            <th className="px-6 py-4">ID</th>
+                                            <th className="px-6 py-4 text-center">Exams</th>
+                                            <th className="px-6 py-4 text-right">Total Pts</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-alfa-blue/5">
+                                        {regionUsers.sort((a,b) => b.totalScore - a.totalScore).map(u => (
+                                            <tr key={u.id}>
+                                                <td className="px-6 py-4 font-black text-alfa-blue text-sm">{u.name}</td>
+                                                <td className="px-6 py-4 font-black text-alfa-blue/40 text-[10px]">{u.employeeId}</td>
+                                                <td className="px-6 py-4 text-center font-black text-alfa-blue/60 text-xs">{(u.examResults || []).length}</td>
+                                                <td className="px-6 py-4 text-right font-black text-alfa-blue text-sm">{u.totalScore}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </AlfaCard>
+                    );
+                })}
+            </div>
         </div>
     );
 };
@@ -1724,16 +1842,14 @@ const AdminResults = () => {
                             const sql = `ALTER TABLE exams ADD COLUMN IF NOT EXISTS points int8 DEFAULT 100;
 ALTER TABLE exams ADD COLUMN IF NOT EXISTS type text DEFAULT 'monthly';
 ALTER TABLE exams ADD COLUMN IF NOT EXISTS group_name text DEFAULT '';
+ALTER TABLE exams ADD COLUMN IF NOT EXISTS allowed_regions jsonb DEFAULT '[]';
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS text_ar text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS text_en text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS correct_answer text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_ar text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS category_en text;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS points int8;
-ALTER TABLE questions ADD COLUMN IF NOT EXISTS option1 text;
-ALTER TABLE questions ADD COLUMN IF NOT EXISTS option2 text;
-ALTER TABLE questions ADD COLUMN IF NOT EXISTS option3 text;
-ALTER TABLE questions ADD COLUMN IF NOT EXISTS option4 text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_retakes jsonb DEFAULT '[]';
 ALTER TABLE exams DISABLE ROW LEVEL SECURITY;
 ALTER TABLE questions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE results DISABLE ROW LEVEL SECURITY;
@@ -2127,8 +2243,15 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
     const [selectedQs, setSelectedQs] = useState<string[]>(editingExam?.questions || []);
     const [examType, setExamType] = useState<'monthly' | 'training'>(editingExam?.type || 'monthly');
     const [groupName, setGroupName] = useState(editingExam?.groupName || '');
+    const [allowedRegions, setAllowedRegions] = useState<string[]>(editingExam?.allowedRegions || []);
 
     const [isSaving, setIsSaving] = useState(false);
+
+    const toggleRegion = (regId: string) => {
+        setAllowedRegions(prev => 
+            prev.includes(regId) ? prev.filter(id => id !== regId) : [...prev, regId]
+        );
+    };
 
     const saveExam = async () => {
         if (!arName || !enName) return alert('Enter name');
@@ -2142,7 +2265,8 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
             questions: selectedQs,
             points: Number(totalPoints),
             type: examType,
-            group_name: groupName || ''
+            group_name: groupName || '',
+            allowed_regions: allowedRegions
         };
 
         // Instant UI Update
@@ -2204,6 +2328,23 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;`;
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] font-black opacity-30 mt-1 uppercase tracking-widest px-2">Total Score</label>
                                     <AlfaInput label="Total Points" type="number" value={totalPoints.toString()} onChange={(e) => setTotalPoints(Number(e.target.value))} />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2 mt-2">
+                                <label className="text-[10px] font-black opacity-40 uppercase tracking-widest px-2">
+                                    {lang === 'ar' ? 'تحديد المناطق المسموح لها (اترك فارغاً للكل)' : 'Allowed Regions (Leave empty for all)'}
+                                </label>
+                                <div className="flex flex-wrap gap-2 p-3 bg-white/50 rounded-2xl border border-black/5">
+                                    {MOCK_REGIONS.map(reg => (
+                                        <button 
+                                            key={reg.id} 
+                                            onClick={() => toggleRegion(reg.id)}
+                                            className={`px-3 py-2 rounded-xl text-[10px] font-black transition-all ${allowedRegions.includes(reg.id) ? 'bg-alfa-blue text-white shadow-md' : 'bg-white text-alfa-blue/40 border border-black/5'}`}
+                                        >
+                                            {lang === 'ar' ? reg.name.ar : reg.name.en}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         </div>
